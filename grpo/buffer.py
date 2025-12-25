@@ -1,8 +1,8 @@
 from dataclasses import dataclass, fields
+from typing import Self
+
 import torch
 import torch.nn.functional as F
-
-from typing import Self
 
 
 @dataclass
@@ -19,9 +19,7 @@ class Experience:
     def to(self, device: torch.device) -> Self:
         field_names = [f.name for f in fields(self)]
         moved_tensors = {
-            name: getattr(self, name).to(device)
-            for name in field_names
-            if getattr(self, name) is not None
+            name: getattr(self, name).to(device) for name in field_names if getattr(self, name) is not None
         }
         return Experience(**moved_tensors)
 
@@ -42,9 +40,7 @@ def split_experience_batch(experience: Experience) -> list[Experience]:
     return [Experience(**data) for data in batch_data]
 
 
-def pad_sequences(
-    tensor_list: list[torch.Tensor], how: str = "beginning"
-) -> torch.Tensor:
+def pad_sequences(tensor_list: list[torch.Tensor], how: str = "beginning") -> torch.Tensor:
     """Pad variable seq_len tensors to the same length."""
     assert how in ("beginning", "ending")
     max_len = max(t.size(0) for t in tensor_list)
