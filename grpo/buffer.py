@@ -36,6 +36,7 @@ def split_experience_batch(experience: Experience) -> list[Experience]:
             batch_data[i][field_name] = vals[i]
     return [Experience(**data) for data in batch_data]
 
+
 def pad_sequences(tensor_list: list[torch.Tensor], how: str = "beginning") -> torch.Tensor:
     """Pad variable seq_len tensors to the same length."""
     assert how in ("beginning", "ending")
@@ -46,6 +47,7 @@ def pad_sequences(tensor_list: list[torch.Tensor], how: str = "beginning") -> to
         padding = (pad_len, 0) if how == "beginning" else (0, pad_len)
         padded_tensors.append(F.pad(tensor, padding))
     return torch.stack(padded_tensors, dim=0)
+
 
 def join_experiences_batch(experiences: list[Experience]) -> Experience: 
     batch_data = {} 
@@ -58,6 +60,7 @@ def join_experiences_batch(experiences: list[Experience]) -> Experience:
             data = None
         batch_data[field_name] = data
     return Experience(**batch_data)
+
 
 class ReplayBuffer:
     def __init__(self, limit: int) -> None:
