@@ -9,3 +9,8 @@ dependencies = [
     "numpy>=2.4.0",
     "torch>=2.9.1",
 ]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+]

@@ -1,23 +1,28 @@
 from dataclasses import dataclass, fields
-import torch 
+import torch
 import torch.nn.functional as F
 
-from typing import Optional, Self
+from typing import Self
+
 
 @dataclass
 class Experience:
-    sequence_ids: torch.Tensor 
+    sequence_ids: torch.Tensor
     log_probs_old: torch.Tensor
-    log_probs_ref: torch.Tensor 
-    rewards: Optional[torch.Tensor] = None 
-    advantages: Optional[torch.Tensor] = None
-    attention_mask: Optional[torch.Tensor] = None
-    action_mask: Optional[torch.Tensor] = None
-    kl: Optional[torch.Tensor] = None
+    log_probs_ref: torch.Tensor
+    rewards: torch.Tensor | None = None
+    advantages: torch.Tensor | None = None
+    attention_mask: torch.Tensor | None = None
+    action_mask: torch.Tensor | None = None
+    kl: torch.Tensor | None = None
 
     def to(self, device: torch.device) -> Self:
         field_names = [f.name for f in fields(self)]
-        moved_tensors = {name: getattr(self, name).to(device) for name in field_names if getattr(self, name) is not None}
+        moved_tensors = {
+            name: getattr(self, name).to(device)
+            for name in field_names
+            if getattr(self, name) is not None
+        }
         return Experience(**moved_tensors)
 
 
@@ -29,7 +34,7 @@ def split_experience_batch(experience: Experience) -> list[Experience]:
         val = getattr(experience, field_name)
         if val is not None:
             vals = torch.unbind(val, dim=0)
-        else: 
+        else:
             vals = [None] * batch_size
         assert len(vals) == batch_size
         for i in range(batch_size):
@@ -37,7 +42,9 @@ def split_experience_batch(experience: Experience) -> list[Experience]:
     return [Experience(**data) for data in batch_data]
 
 
-def pad_sequences(tensor_list: list[torch.Tensor], how: str = "beginning") -> torch.Tensor:
+def pad_sequences(
+    tensor_list: list[torch.Tensor], how: str = "beginning"
+) -> torch.Tensor:
     """Pad variable seq_len tensors to the same length."""
     assert how in ("beginning", "ending")
     max_len = max(t.size(0) for t in tensor_list)
@@ -49,8 +56,8 @@ def pad_sequences(tensor_list: list[torch.Tensor], how: str = "beginning") -> to
     return torch.stack(padded_tensors, dim=0)
 
 
-def join_experiences_batch(experiences: list[Experience]) -> Experience: 
-    batch_data = {} 
+def join_experiences_batch(experiences: list[Experience]) -> Experience:
+    batch_data = {}
     field_names = [f.name for f in fields(Experience)]
     for field_name in field_names:
         vals = [getattr(exp, field_name) for exp in experiences]
@@ -79,6 +86,6 @@ class ReplayBuffer:
 
     def __len__(self) -> int:
         return len(self.buffer)
-    
+
     def __getitem__(self, idx: int) -> Experience:
         return self.buffer[idx]

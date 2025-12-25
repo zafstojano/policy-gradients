@@ -1,5 +1,6 @@
-import torch 
+import torch
 import torch.nn.functional as F
+
 
 def main():
     a = torch.randn(6)
@@ -15,7 +16,6 @@ def main():
         padded_tensor = F.pad(tensor, padding)
         print(padded_tensor.shape, padded_tensor)
         padded_tensors.append(padded_tensor)
-
 
 
 if __name__ == "__main__":
