@@ -66,14 +66,14 @@ def join_experiences_batch(experiences: list[Experience]) -> Experience:
 
 
 class ReplayBuffer:
-    def __init__(self, limit: int) -> None:
+    def __init__(self, limit: int | None = None) -> None:
         self.limit = limit
         self.buffer: list[Experience] = []
 
     def add(self, experience: Experience) -> None:
         items = split_experience_batch(experience)
         self.buffer.extend(items)
-        if len(self.buffer) > self.limit:
+        if self.limit and len(self.buffer) > self.limit:
             excess = len(self.buffer) - self.limit
             self.buffer = self.buffer[excess:]
 

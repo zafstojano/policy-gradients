@@ -5,9 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "accelerate>=1.12.0",
     "dataclasses>=0.8",
     "numpy>=2.4.0",
     "torch>=2.9.1",
+    "transformers>=4.57.3",
+    "wandb>=0.23.1",
 ]
 
 [dependency-groups]
@@ -25,7 +28,9 @@ ignore = [
     "E731",
     "D",         # Disable pydocstyle checks
     "ANN",       # Disable missing type annotation checks
-    "COM"        # Disable flake8-commas
+    "COM",       # Disable flake8-commas
+    "F841",      # Ignore unused variables (often used as placeholders)
+    "RUF059"     # unused variable
 ]
 
 [tool.ruff.lint.isort]
