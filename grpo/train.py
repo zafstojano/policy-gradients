@@ -1,15 +1,22 @@
 import argparse
 import json
 import random
+import re
 
 import numpy as np
 import torch
 import torch.optim as optim
 import wandb
 from torch.utils.data import DataLoader
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 
 from .buffer import ReplayBuffer
+
+
+SYSTEM_PROMPT = """A conversation between User and Assistant. The user asks a question, and the Assistant solves it.
+The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think>
+<answer> answer here </answer>
+"""
 
 
 def get_dataloader(
@@ -56,6 +63,88 @@ def load_model(
     return model, tokenizer
 
 
+def compute_reward(completion: str, oracle_answer: str) -> float:
+    # search answer tag
+    answer_match = re.search(
+        r"<answer>(.*?)</answer>",
+        completion,
+        flags=re.DOTALL,
+    )
+
+    answer = answer_match.group(1) if answer_match else None
+    reward = 0
+    if answer is not None:
+        answer = answer.strip()
+        if answer == oracle_answer:
+            reward = 1.0
+        elif oracle_answer in answer:
+            reward = 0.5
+        else:
+            reward = 0.01
+    return reward
+
+
+@torch.no_grad()
+def rollout(
+    model,
+    tokenizer: AutoTokenizer,
+    question: str,
+    answer: str,
+    num_rollouts: int,
+    max_length: int,
+    temperature: float,
+    top_p: float,
+    top_k: int,
+    min_p: float,
+):
+    # 1. Format prompts 
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": question},
+    ]
+    messages_template = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
+        enable_thinking=True,
+    )
+    model_inputs = tokenizer(
+        messages_template, 
+        return_tensors="pt",
+        padding=True,
+        padding_side="left",
+        return_attention_mask=True,
+    ).to(model.device)
+    model_inputs["input_ids"] = model_inputs["input_ids"].repeat(num_rollouts, 1)
+    model_inputs["attention_mask"] = model_inputs["attention_mask"].repeat(num_rollouts, 1)
+
+    # 2. Generate responses
+    pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+    generation_config = GenerationConfig(
+        temperature=temperature,
+        top_p=top_p,
+        top_k=top_k,
+        min_p=min_p,
+        do_sample=True,
+        max_length=max_length,
+        pad_token_id=pad_token_id,
+    )
+    sequence_ids = model.generate(**model_inputs, generation_config=generation_config)
+    completion_ids = sequence_ids[:, model_inputs["input_ids"].shape[1]:]
+    completions = tokenizer.batch_decode(completion_ids, skip_special_tokens=True)
+
+    action_mask = torch.zeros_like(sequence_ids, dtype=torch.bool)
+    action_mask[:, model_inputs["input_ids"].shape[1]:] = True
+    action_mask[sequence_ids == pad_token_id] = False
+    action_mask = action_mask[:, 1:]
+    print(action_mask.shape)
+
+    # 3. Compute rewards
+    rewards = [compute_reward(completion, answer) for completion in completions]
+    rewards = torch.tensor(rewards, dtype=torch.float32)
+
+    return sequence_ids, action_mask, rewards
+
 def main(args):
     # Init all random seeds
     random.seed(args.seed)
@@ -88,8 +177,21 @@ def main(args):
         replay_buffer.clear()
 
         questions, answers = batch["question"], batch["answer"]
-        print(questions)
-        print(answers)
+
+        for q, a in zip(questions, answers):
+            sequence_ids, action_mask, rewards = rollout(
+                model=model,
+                tokenizer=tokenizer,
+                question=q,
+                answer=a,
+                num_rollouts=args.num_rollouts,
+                max_length=args.max_new_tokens,
+                temperature=args.temperature,
+                top_p=args.top_p,
+                top_k=args.top_k,
+                min_p=args.min_p,
+            )
+            break
 
 
 if __name__ == "__main__":
@@ -97,6 +199,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_path", type=str, default="data/math_tasks.jsonl")
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B")
     parser.add_argument("--prompts_per_step", type=int, default=8)
+    parser.add_argument("--num_rollouts", type=int, default=8)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--lr", type=float, default=5e-6)
     parser.add_argument("--temperature", type=float, default=0.6)
