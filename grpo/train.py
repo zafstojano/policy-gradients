@@ -14,7 +14,9 @@ from .buffer import ReplayBuffer
 
 
 SYSTEM_PROMPT = """A conversation between User and Assistant. The user asks a question, and the Assistant solves it.
-The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think>
+The assistant first thinks about the reasoning process in the mind and then provides the user with the answer.
+The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively:
+ <think> reasoning process here </think>
 <answer> answer here </answer>
 """
 
@@ -97,7 +99,7 @@ def rollout(
     top_k: int,
     min_p: float,
 ):
-    # 1. Format prompts 
+    # 1. Format prompts
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": question},
@@ -109,7 +111,7 @@ def rollout(
         enable_thinking=True,
     )
     model_inputs = tokenizer(
-        messages_template, 
+        messages_template,
         return_tensors="pt",
         padding=True,
         padding_side="left",
@@ -130,11 +132,11 @@ def rollout(
         pad_token_id=pad_token_id,
     )
     sequence_ids = model.generate(**model_inputs, generation_config=generation_config)
-    completion_ids = sequence_ids[:, model_inputs["input_ids"].shape[1]:]
+    completion_ids = sequence_ids[:, model_inputs["input_ids"].shape[1] :]
     completions = tokenizer.batch_decode(completion_ids, skip_special_tokens=True)
 
     action_mask = torch.zeros_like(sequence_ids, dtype=torch.bool)
-    action_mask[:, model_inputs["input_ids"].shape[1]:] = True
+    action_mask[:, model_inputs["input_ids"].shape[1] :] = True
     action_mask[sequence_ids == pad_token_id] = False
     action_mask = action_mask[:, 1:]
     print(action_mask.shape)
@@ -144,6 +146,7 @@ def rollout(
     rewards = torch.tensor(rewards, dtype=torch.float32)
 
     return sequence_ids, action_mask, rewards
+
 
 def main(args):
     # Init all random seeds
@@ -174,11 +177,12 @@ def main(args):
     replay_buffer = ReplayBuffer()
 
     for step, batch in enumerate(dataloader):
+        print(f"Step {step}")
         replay_buffer.clear()
 
         questions, answers = batch["question"], batch["answer"]
 
-        for q, a in zip(questions, answers):
+        for q, a in zip(questions, answers, strict=True):
             sequence_ids, action_mask, rewards = rollout(
                 model=model,
                 tokenizer=tokenizer,
