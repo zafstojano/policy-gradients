@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
+from .loss import GRPOLoss
 
 
 SYSTEM_PROMPT = """A conversation between User and Assistant. The user asks a question, and the Assistant solves it.
@@ -145,12 +146,13 @@ def rollout(
     completion_ids = sequence_ids[:, model_inputs["input_ids"].shape[1] :]
     completions = tokenizer.batch_decode(completion_ids, skip_special_tokens=True)
 
+    # 3. Obtain the generated tokens only
     action_mask = torch.zeros_like(sequence_ids, dtype=torch.bool)
     action_mask[:, model_inputs["input_ids"].shape[1] :] = True
     action_mask[sequence_ids == pad_token_id] = False
     action_mask = action_mask[:, 1:]
 
-    # 3. Compute rewards
+    # 4. Compute rewards
     rewards = [compute_reward(completion, answer) for completion in completions]
     rewards = torch.tensor(rewards, dtype=torch.float32).unsqueeze(-1)
 
@@ -172,6 +174,7 @@ def main(args):
     model, tokenizer = load_model(model_name=args.model_name, device_map=device)
     model_ref, _ = load_model(model_name=args.model_name, device_map=device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    objective = GRPOLoss(args.clip_eps, args.beta)
 
     model.train()
     model_ref.eval()
@@ -237,11 +240,19 @@ def main(args):
                 experience: Experience
                 experience.to(device)
 
+                optimizer.zero_grad()
+                log_probs = compute_log_probs(model, experience.sequence_ids, experience.attention_mask)
+                loss, kl_loss = objective(log_probs, experience)
+                loss.backward()
+                optimizer.step()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_path", type=str, default="data/math_tasks.jsonl")
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B")
+    parser.add_argument("--clip_eps", type=float, default=0.2)
+    parser.add_argument("--beta", type=float, default=0.01)
     parser.add_argument("--prompts_per_step", type=int, default=8)
     parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--epochs_per_step", type=int, default=1)
