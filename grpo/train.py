@@ -8,9 +8,10 @@ import torch
 import torch.optim as optim
 import wandb
 from torch.utils.data import DataLoader
+import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 
-from .buffer import ReplayBuffer
+from .buffer import ReplayBuffer, Experience, join_experiences_batch
 
 
 SYSTEM_PROMPT = """A conversation between User and Assistant. The user asks a question, and the Assistant solves it.
@@ -49,11 +50,7 @@ def get_dataloader(
     return dataloader
 
 
-def load_model(
-    model_name: str,
-    trust_remote_code: bool = False,
-    device_map=None,
-):
+def load_model(model_name: str, trust_remote_code: bool = False, device_map=None):
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=trust_remote_code)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
@@ -66,13 +63,11 @@ def load_model(
 
 
 def compute_reward(completion: str, oracle_answer: str) -> float:
-    # search answer tag
     answer_match = re.search(
         r"<answer>(.*?)</answer>",
         completion,
         flags=re.DOTALL,
     )
-
     answer = answer_match.group(1) if answer_match else None
     reward = 0
     if answer is not None:
@@ -84,6 +79,21 @@ def compute_reward(completion: str, oracle_answer: str) -> float:
         else:
             reward = 0.01
     return reward
+
+
+@torch.no_grad()
+def compute_advantages(rewards: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+    return (rewards - rewards.mean(dim=0, keepdim=True)) / (rewards.std(dim=0, keepdim=True) + eps)
+
+
+@torch.no_grad()
+def compute_log_probs(model, sequence_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    output = model(input_ids=sequence_ids, attention_mask=attention_mask, use_cache=False)
+    logits = output.logits[:, :-1, :].to(torch.float32)
+    log_probs = F.log_softmax(logits, dim=-1)
+    targets = sequence_ids[:, 1:].unsqueeze(-1)
+    target_log_probs = torch.gather(log_probs, dim=-1, index=targets).squeeze(-1)
+    return target_log_probs
 
 
 @torch.no_grad()
@@ -139,13 +149,12 @@ def rollout(
     action_mask[:, model_inputs["input_ids"].shape[1] :] = True
     action_mask[sequence_ids == pad_token_id] = False
     action_mask = action_mask[:, 1:]
-    print(action_mask.shape)
 
     # 3. Compute rewards
     rewards = [compute_reward(completion, answer) for completion in completions]
-    rewards = torch.tensor(rewards, dtype=torch.float32)
+    rewards = torch.tensor(rewards, dtype=torch.float32).unsqueeze(-1)
 
-    return sequence_ids, action_mask, rewards
+    return sequence_ids, action_mask, rewards, completions
 
 
 def main(args):
@@ -161,10 +170,11 @@ def main(args):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     cpu_device = torch.device("cpu")
     model, tokenizer = load_model(model_name=args.model_name, device_map=device)
-    ref_model, _ = load_model(model_name=args.model_name, device_map=device)
+    model_ref, _ = load_model(model_name=args.model_name, device_map=device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-    ref_model.eval()
+    model.train()
+    model_ref.eval()
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
     if args.wandb_project is None:
@@ -183,7 +193,7 @@ def main(args):
         questions, answers = batch["question"], batch["answer"]
 
         for q, a in zip(questions, answers, strict=True):
-            sequence_ids, action_mask, rewards = rollout(
+            sequence_ids, action_mask, rewards, completions = rollout(
                 model=model,
                 tokenizer=tokenizer,
                 question=q,
@@ -195,14 +205,48 @@ def main(args):
                 top_k=args.top_k,
                 min_p=args.min_p,
             )
-            break
+
+            advantages = compute_advantages(rewards)
+            attention_mask = sequence_ids != tokenizer.pad_token_id
+            
+            log_probs_old = compute_log_probs(model, sequence_ids, attention_mask)
+            log_probs_ref = compute_log_probs(model_ref, sequence_ids, attention_mask)
+
+            experience = Experience(
+                sequence_ids=sequence_ids,
+                log_probs_old=log_probs_old,
+                log_probs_ref=log_probs_ref,
+                advantages=advantages,
+                attention_mask=attention_mask,
+                action_mask=action_mask,
+            ).to(cpu_device)
+            replay_buffer.add(experience)
+    
+        torch.cuda.empty_cache()
+        experience_sampler = DataLoader(
+            dataset=replay_buffer.buffer,
+            batch_size=args.train_batch_size,
+            shuffle=True,
+            pin_memory=False,
+            drop_last=True,
+            collate_fn=join_experiences_batch,
+        )
+
+        for epoch in range(args.epochs_per_step):
+            for experience in experience_sampler:
+                print(f"Experience: {experience}")
+                print()
+                
+            
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_path", type=str, default="data/math_tasks.jsonl")
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B")
-    parser.add_argument("--prompts_per_step", type=int, default=8)
+    parser.add_argument("--prompts_per_step", type=int, default=2)
+    parser.add_argument("--train_batch_size", type=int, default=2)
+    parser.add_argument("--epochs_per_step", type=int, default=1)
     parser.add_argument("--num_rollouts", type=int, default=8)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--lr", type=float, default=5e-6)

@@ -10,11 +10,9 @@ class Experience:
     sequence_ids: torch.Tensor
     log_probs_old: torch.Tensor
     log_probs_ref: torch.Tensor
-    rewards: torch.Tensor | None = None
     advantages: torch.Tensor | None = None
     attention_mask: torch.Tensor | None = None
     action_mask: torch.Tensor | None = None
-    kl: torch.Tensor | None = None
 
     def to(self, device: torch.device) -> Self:
         field_names = [f.name for f in fields(self)]
@@ -40,14 +38,14 @@ def split_experience_batch(experience: Experience) -> list[Experience]:
     return [Experience(**data) for data in batch_data]
 
 
-def pad_sequences(tensor_list: list[torch.Tensor], how: str = "beginning") -> torch.Tensor:
-    """Pad variable seq_len tensors to the same length."""
-    assert how in ("beginning", "ending")
+def pad_sequences(tensor_list: list[torch.Tensor], how: str = "start") -> torch.Tensor:
+    """Pad variable tensors to the same length."""
+    assert how in ("start", "end")
     max_len = max(t.size(0) for t in tensor_list)
     padded_tensors = []
     for tensor in tensor_list:
         pad_len = max_len - tensor.size(0)
-        padding = (pad_len, 0) if how == "beginning" else (0, pad_len)
+        padding = (pad_len, 0) if how == "start" else (0, pad_len)
         padded_tensors.append(F.pad(tensor, padding))
     return torch.stack(padded_tensors, dim=0)
 
@@ -58,7 +56,7 @@ def join_experiences_batch(experiences: list[Experience]) -> Experience:
     for field_name in field_names:
         vals = [getattr(exp, field_name) for exp in experiences]
         if all(v is not None for v in vals):
-            data = pad_sequences(vals, how="beginning")
+            data = pad_sequences(vals, how="start")
         else:
             data = None
         batch_data[field_name] = data
