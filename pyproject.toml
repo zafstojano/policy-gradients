@@ -30,7 +30,8 @@ ignore = [
     "ANN",       # Disable missing type annotation checks
     "COM",       # Disable flake8-commas
     "F841",      # Ignore unused variables (often used as placeholders)
-    "RUF059"     # unused variable
+    "RUF059",    # unused variable
+    "B007",      # unused variable in loop
 ]
 
 [tool.ruff.lint.isort]

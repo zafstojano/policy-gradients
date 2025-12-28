@@ -5,13 +5,13 @@ import re
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 import torch.optim as optim
 import wandb
 from torch.utils.data import DataLoader
-import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 
-from .buffer import ReplayBuffer, Experience, join_experiences_batch
+from .buffer import Experience, ReplayBuffer, join_experiences_batch
 
 
 SYSTEM_PROMPT = """A conversation between User and Assistant. The user asks a question, and the Assistant solves it.
@@ -208,7 +208,7 @@ def main(args):
 
             advantages = compute_advantages(rewards)
             attention_mask = sequence_ids != tokenizer.pad_token_id
-            
+
             log_probs_old = compute_log_probs(model, sequence_ids, attention_mask)
             log_probs_ref = compute_log_probs(model_ref, sequence_ids, attention_mask)
 
@@ -221,7 +221,7 @@ def main(args):
                 action_mask=action_mask,
             ).to(cpu_device)
             replay_buffer.add(experience)
-    
+
         torch.cuda.empty_cache()
         experience_sampler = DataLoader(
             dataset=replay_buffer.buffer,
@@ -236,8 +236,6 @@ def main(args):
             for experience in experience_sampler:
                 print(f"Experience: {experience}")
                 print()
-                
-            
 
 
 if __name__ == "__main__":
