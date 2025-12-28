@@ -1,13 +1,10 @@
-import torch 
-import torch.nn as nn 
+import torch
+import torch.nn as nn
 
 from .buffer import Experience
 
-def approx_kl_div(
-    log_probs: torch.Tensor, 
-    log_probs_ref: torch.Tensor,
-    action_mask: torch.Tensor
-) -> torch.Tensor:
+
+def approx_kl_div(log_probs: torch.Tensor, log_probs_ref: torch.Tensor, action_mask: torch.Tensor) -> torch.Tensor:
     """
     Monte-Carlo approximation of KL divergence, k3 estimator, see: http://joschu.net/blog/kl-approx.html
     """
@@ -20,7 +17,7 @@ def approx_kl_div(
 def masked_mean(
     tensor: torch.Tensor,
     mask: torch.Tensor,
-    dim: int = None,
+    dim: int | None = None,
     eps: float = 1e-8,
 ) -> torch.Tensor:
     if mask is None:
@@ -29,7 +26,7 @@ def masked_mean(
 
 
 class GRPOLoss(nn.Module):
-    def __init__(self,  clip_eps: float, beta: float) -> None:
+    def __init__(self, clip_eps: float, beta: float) -> None:
         super().__init__()
         self.clip_eps = clip_eps
         self.beta = beta
@@ -44,9 +41,9 @@ class GRPOLoss(nn.Module):
         clipped_term = ratio.clamp(1.0 - self.clip_eps, 1.0 + self.clip_eps) * experience.advantages
 
         kl_div = approx_kl_div(log_probs, experience.log_probs_ref, experience.action_mask)
-        
+
         loss = -torch.min(unclipped_term, clipped_term) + self.beta * kl_div
         loss = masked_mean(loss, experience.action_mask, dim=-1)
-        kl_loss = masked_mean(kl_div.detach(), experience.action_mask, dim=-1) # for logging purposes
+        kl_loss = masked_mean(kl_div.detach(), experience.action_mask, dim=-1)  # for logging purposes
 
         return loss, kl_loss
