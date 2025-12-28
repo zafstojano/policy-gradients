@@ -12,3 +12,5 @@ wheels/
 
 # data
 data/
+
+.vscode/
