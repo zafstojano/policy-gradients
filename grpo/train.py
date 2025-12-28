@@ -234,8 +234,8 @@ def main(args):
 
         for epoch in range(args.epochs_per_step):
             for experience in experience_sampler:
-                print(f"Experience: {experience}")
-                print()
+                experience: Experience
+                experience.to(device)
 
 
 if __name__ == "__main__":
