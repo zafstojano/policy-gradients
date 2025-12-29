@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 import wandb
+from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 
@@ -183,15 +184,23 @@ def main(args):
     if args.wandb_project is None:
         wandb.init(mode="disabled")
     else:
-        wandb.init(project=args.wandb_project)
+        wandb.init(project=args.wandb_project, config=vars(args))
 
+    print("=" * 80)
+    print("MODEL ARCHITECTURE")
+    print("=" * 80)
     print(model)
+    print("=" * 80)
+    print()
 
     replay_buffer = ReplayBuffer()
 
     for step, batch in enumerate(dataloader):
-        print(f"Step {step}")
+        print(f"\n{'=' * 80}")
+        print(f"STEP {step}")
+        print("=" * 80)
         replay_buffer.clear()
+        rollout_rewards, rollout_completions = [], []
 
         questions, answers = batch["question"], batch["answer"]
 
@@ -225,6 +234,29 @@ def main(args):
             ).to(cpu_device)
             replay_buffer.add(experience)
 
+            rollout_rewards.append(rewards.cpu())
+            rollout_completions.append((q, a, completions))
+
+        avg_reward = torch.cat(rollout_rewards, dim=0).mean().item()
+        wandb.log({"avg_reward": avg_reward})
+        print("\n  Rollout Results:")
+        print(f"    Average Reward: {avg_reward:.4f}")
+
+        # Print a sample completion
+        if rollout_completions:
+            sample_q, sample_a, sample_completions = rollout_completions[0]
+            sample_completion = sample_completions[0]
+
+            # Truncate if needed
+            max_len = 1000
+            if len(sample_completion) > max_len:
+                sample_completion = sample_completion[:max_len] + "..."
+
+            print("\n  Sample Completion:")
+            print(f"    Question: {sample_q}")
+            print(f"    Oracle Answer: {sample_a}")
+            print(f"    Model Completion:\n{sample_completion}")
+
         torch.cuda.empty_cache()
         experience_sampler = DataLoader(
             dataset=replay_buffer.buffer,
@@ -235,16 +267,37 @@ def main(args):
             collate_fn=join_experiences_batch,
         )
 
+        print(f"\n  Training ({args.epochs_per_step} epoch(s)):")
         for epoch in range(args.epochs_per_step):
-            for experience in experience_sampler:
+            for batch_idx, experience in enumerate(experience_sampler):
                 experience: Experience
                 experience.to(device)
 
                 optimizer.zero_grad()
                 log_probs = compute_log_probs(model, experience.sequence_ids, experience.attention_mask)
                 loss, kl_loss = objective(log_probs, experience)
+
+                if not loss.isfinite():
+                    print(
+                        f"    [Epoch {epoch + 1}/{args.epochs_per_step}, Batch {batch_idx + 1}] WARNING: Loss is inf!"
+                    )
+                    continue
+
                 loss.backward()
+                grad_norm = clip_grad_norm_(model.parameters(), max_norm=args.max_norm)
                 optimizer.step()
+
+                wandb.log(
+                    {
+                        "loss": loss.item(),
+                        "kl_loss": kl_loss.item(),
+                        "grad_norm": grad_norm,
+                    }
+                )
+                print(
+                    f"    [Epoch {epoch + 1}/{args.epochs_per_step}, Batch {batch_idx + 1}] "
+                    f" Loss: {loss.item():.4f} | KL: {kl_loss.item():.4f} | Grad Norm: {grad_norm:.4f}"
+                )
 
 
 if __name__ == "__main__":
@@ -253,8 +306,8 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B")
     parser.add_argument("--clip_eps", type=float, default=0.2)
     parser.add_argument("--beta", type=float, default=0.01)
-    parser.add_argument("--prompts_per_step", type=int, default=8)
-    parser.add_argument("--train_batch_size", type=int, default=16)
+    parser.add_argument("--prompts_per_step", type=int, default=4)
+    parser.add_argument("--train_batch_size", type=int, default=4)
     parser.add_argument("--epochs_per_step", type=int, default=1)
     parser.add_argument("--num_rollouts", type=int, default=8)
     parser.add_argument("--seed", type=int, default=42)
@@ -264,7 +317,8 @@ if __name__ == "__main__":
     parser.add_argument("--top_k", type=int, default=20)
     parser.add_argument("--min_p", type=float, default=0.0)
     parser.add_argument("--max_new_tokens", type=int, default=1024)
-    parser.add_argument("--wandb_project", default=None)
+    parser.add_argument("--max_norm", type=float, default=1.0)
+    parser.add_argument("--wandb_project", type=str, default="micro-grpo")
     args = parser.parse_args()
 
     main(args)
