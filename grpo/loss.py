@@ -43,7 +43,7 @@ class GRPOLoss(nn.Module):
         kl_div = approx_kl_div(log_probs, experience.log_probs_ref, experience.action_mask)
 
         loss = -torch.min(unclipped_term, clipped_term) + self.beta * kl_div
-        loss = masked_mean(loss, experience.action_mask, dim=-1)
-        kl_loss = masked_mean(kl_div.detach(), experience.action_mask, dim=-1)  # for logging purposes
+        loss = masked_mean(loss, experience.action_mask, dim=-1).mean(dim=0)
+        kl_loss = masked_mean(kl_div.detach(), experience.action_mask, dim=-1).mean(dim=0)
 
         return loss, kl_loss
