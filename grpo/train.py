@@ -33,8 +33,8 @@ def get_dataloader(
     dataset_path: str,
     prompts_per_step: int,
     max_dataset_size: int | None = None,
-    max_num_terms: int = 3,
-    max_num_digits: int = 3,
+    max_num_terms: int = 10,
+    max_num_digits: int = 10,
     max_question_len: int = 128,
 ) -> DataLoader:
     predicate = (
@@ -243,7 +243,7 @@ def main(args):
             ).to(cpu_device)
             replay_buffer.add(experience)
 
-            rollout_rewards.append(rewards.cpu())
+            rollout_rewards.append(rewards.detach().cpu())
             rollout_completions.append((q, a, completions))
 
         avg_reward = torch.cat(rollout_rewards, dim=0).mean().item()
@@ -338,11 +338,11 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B")
     parser.add_argument("--clip_eps", type=float, default=0.2)
     parser.add_argument("--beta", type=float, default=0.01)
-    parser.add_argument("--prompts_per_step", type=int, default=1)
-    parser.add_argument("--num_rollouts", type=int, default=5)
+    parser.add_argument("--prompts_per_step", type=int, default=2)
+    parser.add_argument("--num_rollouts", type=int, default=8)
     parser.add_argument("--train_batch_size", type=int, default=2)
-    parser.add_argument("--batch_acc", type=int, default=3)
-    parser.add_argument("--epochs_per_step", type=int, default=1)
+    parser.add_argument("--batch_acc", type=int, default=2)
+    parser.add_argument("--epochs_per_step", type=int, default=2)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--lr", type=float, default=5e-6)
     parser.add_argument("--temperature", type=float, default=0.6)
@@ -353,7 +353,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_norm", type=float, default=1.0)
     parser.add_argument("--wandb_project", type=str, default="micro-grpo")
     parser.add_argument("--model_device_id", type=int, default=0)
-    parser.add_argument("--ref_model_device_id", type=int, default=3)
+    parser.add_argument("--ref_model_device_id", type=int, default=1)
     args = parser.parse_args()
 
     main(args)
