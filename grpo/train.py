@@ -94,6 +94,7 @@ def compute_advantages(rewards: torch.Tensor, eps: float = 1e-8) -> torch.Tensor
 
 
 def compute_log_probs(model, sequence_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    sequence_ids, attention_mask = sequence_ids.to(model.device), attention_mask.to(model.device)
     output = model(input_ids=sequence_ids, attention_mask=attention_mask, use_cache=False)
     logits = output.logits[:, :-1, :].to(torch.float32)
     log_probs = F.log_softmax(logits, dim=-1)
@@ -171,11 +172,15 @@ def main(args):
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
 
-    dataloader = get_dataloader(dataset_path=args.dataset_path, prompts_per_step=args.prompts_per_step)
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     cpu_device = torch.device("cpu")
-    model, tokenizer = load_model(model_name=args.model_name, device_map=device)
-    model_ref, _ = load_model(model_name=args.model_name, device_map=device)
+    if torch.cuda.is_available():
+        model_device, ref_model_device = f"cuda:{args.model_device_id}", f"cuda:{args.ref_model_device_id}"
+    else:
+        model_device, ref_model_device = "cpu", "cpu"
+
+    dataloader = get_dataloader(dataset_path=args.dataset_path, prompts_per_step=args.prompts_per_step)
+    model, tokenizer = load_model(model_name=args.model_name, device_map=model_device)
+    model_ref, _ = load_model(model_name=args.model_name, device_map=ref_model_device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     objective = GRPOLoss(args.clip_eps, args.beta)
 
@@ -274,11 +279,14 @@ def main(args):
 
         print(f"\n  Training ({args.epochs_per_step} epoch(s)):")
         for epoch in range(args.epochs_per_step):
+            optimizer.zero_grad(set_to_none=True)
+            accumulated_loss = 0.0
+            accumulated_kl_loss = 0.0
+
             for batch_idx, experience in enumerate(experience_sampler):
                 experience: Experience
-                experience = experience.to(device)
+                experience = experience.to(model.device)
 
-                optimizer.zero_grad()
                 log_probs = compute_log_probs(model, experience.sequence_ids, experience.attention_mask)
                 loss, kl_loss = objective(log_probs, experience)
 
@@ -288,21 +296,40 @@ def main(args):
                     )
                     continue
 
-                loss.backward()
-                grad_norm = clip_grad_norm_(model.parameters(), max_norm=args.max_norm)
-                optimizer.step()
+                # Scale loss by accumulation steps
+                scaled_loss = loss / args.batch_acc
+                scaled_loss.backward()
 
-                wandb.log(
-                    {
-                        "loss": loss.item(),
-                        "kl_loss": kl_loss.item(),
-                        "grad_norm": grad_norm,
-                    }
-                )
-                print(
-                    f"    [Epoch {epoch + 1}/{args.epochs_per_step}, Batch {batch_idx + 1}] "
-                    f" Loss: {loss.item():.4f} | KL: {kl_loss.item():.4f} | Grad Norm: {grad_norm:.4f}"
-                )
+                accumulated_loss += loss.item()
+                accumulated_kl_loss += kl_loss.item()
+
+                # Update weights every batch_acc steps
+                if (batch_idx + 1) % args.batch_acc == 0 or (batch_idx + 1) == len(experience_sampler):
+                    grad_norm = clip_grad_norm_(model.parameters(), max_norm=args.max_norm)
+                    optimizer.step()
+                    optimizer.zero_grad(set_to_none=True)
+                    torch.cuda.empty_cache()
+
+                    # Log averaged metrics
+                    num_accumulated = min(args.batch_acc, (batch_idx % args.batch_acc) + 1)
+                    avg_loss = accumulated_loss / num_accumulated
+                    avg_kl_loss = accumulated_kl_loss / num_accumulated
+
+                    wandb.log(
+                        {
+                            "loss": avg_loss,
+                            "kl_loss": avg_kl_loss,
+                            "grad_norm": grad_norm,
+                        }
+                    )
+                    print(
+                        f"    [Epoch {epoch + 1}/{args.epochs_per_step}, Batch {batch_idx + 1}] "
+                        f" Loss: {avg_loss:.4f} | KL: {avg_kl_loss:.4f} | Grad Norm: {grad_norm:.4f}"
+                    )
+
+                    # Reset accumulators
+                    accumulated_loss = 0.0
+                    accumulated_kl_loss = 0.0
 
 
 if __name__ == "__main__":
@@ -311,9 +338,10 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B")
     parser.add_argument("--clip_eps", type=float, default=0.2)
     parser.add_argument("--beta", type=float, default=0.01)
-    parser.add_argument("--prompts_per_step", type=int, default=4)
-    parser.add_argument("--num_rollouts", type=int, default=8)
-    parser.add_argument("--train_batch_size", type=int, default=4)
+    parser.add_argument("--prompts_per_step", type=int, default=1)
+    parser.add_argument("--num_rollouts", type=int, default=5)
+    parser.add_argument("--train_batch_size", type=int, default=2)
+    parser.add_argument("--batch_acc", type=int, default=3)
     parser.add_argument("--epochs_per_step", type=int, default=1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--lr", type=float, default=5e-6)
@@ -321,9 +349,11 @@ if __name__ == "__main__":
     parser.add_argument("--top_p", type=float, default=0.95)
     parser.add_argument("--top_k", type=int, default=20)
     parser.add_argument("--min_p", type=float, default=0.0)
-    parser.add_argument("--max_new_tokens", type=int, default=1024)
+    parser.add_argument("--max_new_tokens", type=int, default=512)
     parser.add_argument("--max_norm", type=float, default=1.0)
     parser.add_argument("--wandb_project", type=str, default="micro-grpo")
+    parser.add_argument("--model_device_id", type=int, default=0)
+    parser.add_argument("--ref_model_device_id", type=int, default=3)
     args = parser.parse_args()
 
     main(args)
