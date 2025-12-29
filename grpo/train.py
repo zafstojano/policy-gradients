@@ -7,10 +7,11 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
-import wandb
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
+
+import wandb
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
 from .loss import GRPOLoss
@@ -19,8 +20,12 @@ from .loss import GRPOLoss
 SYSTEM_PROMPT = """A conversation between User and Assistant. The user asks a question, and the Assistant solves it.
 The assistant first thinks about the reasoning process in the mind and then provides the user with the answer.
 The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively:
-<think> reasoning process here </think>
-<answer> answer here </answer>
+<think>
+reasoning process here
+</think>
+<answer>
+answer here
+</answer>
 """
 
 
@@ -177,7 +182,6 @@ def main(args):
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     objective = GRPOLoss(args.clip_eps, args.beta)
 
-    model.train()
     model_ref.eval()
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
@@ -199,6 +203,8 @@ def main(args):
         print(f"\n{'=' * 80}")
         print(f"STEP {step}")
         print("=" * 80)
+
+        model.eval()
         replay_buffer.clear()
         rollout_rewards, rollout_completions = [], []
 
@@ -258,6 +264,7 @@ def main(args):
             print(f"    Model Completion:\n{sample_completion}")
 
         torch.cuda.empty_cache()
+        model.train()
         experience_sampler = DataLoader(
             dataset=replay_buffer.buffer,
             batch_size=args.train_batch_size,
@@ -271,7 +278,7 @@ def main(args):
         for epoch in range(args.epochs_per_step):
             for batch_idx, experience in enumerate(experience_sampler):
                 experience: Experience
-                experience.to(device)
+                experience = experience.to(device)
 
                 optimizer.zero_grad()
                 log_probs = compute_log_probs(model, experience.sequence_ids, experience.attention_mask)
@@ -306,10 +313,10 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B")
     parser.add_argument("--clip_eps", type=float, default=0.2)
     parser.add_argument("--beta", type=float, default=0.01)
-    parser.add_argument("--prompts_per_step", type=int, default=4)
+    parser.add_argument("--prompts_per_step", type=int, default=1)
+    parser.add_argument("--num_rollouts", type=int, default=8)
     parser.add_argument("--train_batch_size", type=int, default=4)
     parser.add_argument("--epochs_per_step", type=int, default=1)
-    parser.add_argument("--num_rollouts", type=int, default=8)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--lr", type=float, default=5e-6)
     parser.add_argument("--temperature", type=float, default=0.6)
