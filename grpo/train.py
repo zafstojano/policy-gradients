@@ -93,7 +93,6 @@ def compute_advantages(rewards: torch.Tensor, eps: float = 1e-8) -> torch.Tensor
     return (rewards - rewards.mean(dim=0, keepdim=True)) / (rewards.std(dim=0, keepdim=True) + eps)
 
 
-@torch.no_grad()
 def compute_log_probs(model, sequence_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
     output = model(input_ids=sequence_ids, attention_mask=attention_mask, use_cache=False)
     logits = output.logits[:, :-1, :].to(torch.float32)
@@ -172,9 +171,7 @@ def main(args):
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
 
-    dataloader = get_dataloader(
-        dataset_path=args.dataset_path, prompts_per_step=args.prompts_per_step, max_dataset_size=args.prompts_per_step
-    )
+    dataloader = get_dataloader(dataset_path=args.dataset_path, prompts_per_step=args.prompts_per_step)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     cpu_device = torch.device("cpu")
     model, tokenizer = load_model(model_name=args.model_name, device_map=device)
@@ -227,8 +224,9 @@ def main(args):
             advantages = compute_advantages(rewards)
             attention_mask = sequence_ids != tokenizer.pad_token_id
 
-            log_probs_old = compute_log_probs(model, sequence_ids, attention_mask)
-            log_probs_ref = compute_log_probs(model_ref, sequence_ids, attention_mask)
+            with torch.no_grad():
+                log_probs_old = compute_log_probs(model, sequence_ids, attention_mask)
+                log_probs_ref = compute_log_probs(model_ref, sequence_ids, attention_mask)
 
             experience = Experience(
                 sequence_ids=sequence_ids,
@@ -313,7 +311,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B")
     parser.add_argument("--clip_eps", type=float, default=0.2)
     parser.add_argument("--beta", type=float, default=0.01)
-    parser.add_argument("--prompts_per_step", type=int, default=1)
+    parser.add_argument("--prompts_per_step", type=int, default=4)
     parser.add_argument("--num_rollouts", type=int, default=8)
     parser.add_argument("--train_batch_size", type=int, default=4)
     parser.add_argument("--epochs_per_step", type=int, default=1)
