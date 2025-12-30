@@ -1,12 +1,14 @@
 import argparse
-import json
 import random
 import re
 
 import numpy as np
+import reasoning_gym as rg
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+from reasoning_gym.dataset import ProceduralDataset
+from reasoning_gym.utils import SYSTEM_PROMPTS, extract_answer
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
@@ -15,46 +17,6 @@ import wandb
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
 from .loss import GRPOLoss
-
-
-SYSTEM_PROMPT = """A conversation between User and Assistant. The user asks a question, and the Assistant solves it.
-The assistant first thinks about the reasoning process in the mind and then provides the user with the answer.
-The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively:
-<think>
-reasoning process here
-</think>
-<answer>
-answer here
-</answer>
-"""
-
-
-def get_dataloader(
-    dataset_path: str,
-    prompts_per_step: int,
-    max_dataset_size: int | None = None,
-    max_num_terms: int = 10,
-    max_num_digits: int = 10,
-    max_question_len: int = 128,
-) -> DataLoader:
-    predicate = (
-        lambda x: x["num_terms"] <= max_num_terms
-        and x["num_digits"] <= max_num_digits
-        and len(x["question"]) < max_question_len
-    )
-    with open(dataset_path) as f:
-        dataset = [json.loads(line) for line in f]
-    dataset = [x for x in dataset if predicate(x)]
-    if max_dataset_size is not None:
-        dataset = dataset[:max_dataset_size]
-    dataloader = DataLoader(
-        dataset=dataset,
-        batch_size=prompts_per_step,
-        shuffle=True,
-        pin_memory=False,
-        drop_last=True,
-    )
-    return dataloader
 
 
 def load_model(model_name: str, trust_remote_code: bool = False, device_map=None):
@@ -69,23 +31,37 @@ def load_model(model_name: str, trust_remote_code: bool = False, device_map=None
     return model, tokenizer
 
 
-def compute_reward(completion: str, oracle_answer: str) -> float:
-    answer_match = re.search(
-        r"<answer>(.*?)</answer>",
-        completion,
-        flags=re.DOTALL,
-    )
-    answer = answer_match.group(1) if answer_match else None
-    reward = 0
-    if answer is not None:
-        answer = answer.strip()
-        if answer == oracle_answer:
-            reward = 1.0
-        elif oracle_answer in answer:
-            reward = 0.5
-        else:
-            reward = 0.01
-    return reward
+def _accuracy_reward(dataset: ProceduralDataset, completions: str, entry: dict) -> float:
+    def score_answer(completion: str) -> float:
+        answer = extract_answer(completion)
+        return dataset.score_answer(answer, entry)
+
+    return [score_answer(c) for c in completions]
+
+
+def _format_reward(completions: list[str], **kwargs) -> list[float]:
+    def count_tags(text: str) -> float:
+        count = 0.0
+        if re.search(r"\s*<think>\s*", text):
+            count += 0.25
+        if re.search(r"\s*</think>\s*", text):
+            count += 0.25
+        if re.search(r"\s*<answer>\s*", text):
+            count += 0.25
+        if re.search(r"\s*</answer>\s*", text):
+            count += 0.25
+        return count
+
+    return [count_tags(c) for c in completions]
+
+
+def compute_rewards(
+    dataset: ProceduralDataset, completions: list[str], entry: dict, format_weight: float = 0.5
+) -> list[float]:
+    accuracy_rewards = _accuracy_reward(dataset, completions, entry)
+    format_rewards = _format_reward(completions)
+    combined_rewards = [acc + format_weight * fmt for acc, fmt in zip(accuracy_rewards, format_rewards, strict=True)]
+    return combined_rewards
 
 
 @torch.no_grad()
@@ -106,9 +82,9 @@ def compute_log_probs(model, sequence_ids: torch.Tensor, attention_mask: torch.T
 @torch.no_grad()
 def rollout(
     model,
+    dataset: ProceduralDataset,
     tokenizer: AutoTokenizer,
-    question: str,
-    answer: str,
+    entry: dict,
     num_rollouts: int,
     max_length: int,
     temperature: float,
@@ -118,8 +94,8 @@ def rollout(
 ):
     # 1. Format prompts
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": question},
+        {"role": "system", "content": SYSTEM_PROMPTS["DeepSeekZero"]},
+        {"role": "user", "content": entry["question"]},
     ]
     messages_template = tokenizer.apply_chat_template(
         messages,
@@ -159,7 +135,7 @@ def rollout(
     action_mask = action_mask[:, 1:]
 
     # 4. Compute rewards
-    rewards = [compute_reward(completion, answer) for completion in completions]
+    rewards = compute_rewards(dataset, completions, entry)
     rewards = torch.tensor(rewards, dtype=torch.float32).unsqueeze(-1)
 
     return sequence_ids, action_mask, rewards, completions
@@ -178,7 +154,15 @@ def main(args):
     else:
         model_device, ref_model_device = "cpu", "cpu"
 
-    dataloader = get_dataloader(dataset_path=args.dataset_path, prompts_per_step=args.prompts_per_step)
+    dataset = rg.create_dataset(name=args.dataset_name, seed=args.seed, size=args.dataset_size)
+    dataloader = DataLoader(
+        dataset=dataset,
+        batch_size=args.prompts_per_step,
+        shuffle=True,
+        pin_memory=False,
+        drop_last=True,
+        collate_fn=lambda x: x,
+    )
     model, tokenizer = load_model(model_name=args.model_name, device_map=model_device)
     model_ref, _ = load_model(model_name=args.model_name, device_map=ref_model_device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
@@ -210,14 +194,12 @@ def main(args):
         replay_buffer.clear()
         rollout_rewards, rollout_completions = [], []
 
-        questions, answers = batch["question"], batch["answer"]
-
-        for q, a in zip(questions, answers, strict=True):
+        for entry in batch:
             sequence_ids, action_mask, rewards, completions = rollout(
                 model=model,
+                dataset=dataset,
                 tokenizer=tokenizer,
-                question=q,
-                answer=a,
+                entry=entry,
                 num_rollouts=args.num_rollouts,
                 max_length=args.max_new_tokens,
                 temperature=args.temperature,
@@ -244,7 +226,7 @@ def main(args):
             replay_buffer.add(experience)
 
             rollout_rewards.append(rewards.detach().cpu())
-            rollout_completions.append((q, a, completions))
+            rollout_completions.append((entry["question"], entry["answer"], completions))
 
         avg_reward = torch.cat(rollout_rewards, dim=0).mean().item()
         wandb.log({"avg_reward": avg_reward})
@@ -334,15 +316,16 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_path", type=str, default="data/math_tasks.jsonl")
+    parser.add_argument("--dataset_name", type=str, default="spell_backward")
+    parser.add_argument("--dataset_size", type=int, default=10_000)
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B")
     parser.add_argument("--clip_eps", type=float, default=0.2)
     parser.add_argument("--beta", type=float, default=0.01)
-    parser.add_argument("--prompts_per_step", type=int, default=2)
+    parser.add_argument("--prompts_per_step", type=int, default=5)
     parser.add_argument("--num_rollouts", type=int, default=8)
     parser.add_argument("--train_batch_size", type=int, default=2)
-    parser.add_argument("--batch_acc", type=int, default=2)
-    parser.add_argument("--epochs_per_step", type=int, default=2)
+    parser.add_argument("--batch_acc", type=int, default=4)
+    parser.add_argument("--epochs_per_step", type=int, default=1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--lr", type=float, default=5e-6)
     parser.add_argument("--temperature", type=float, default=0.6)
