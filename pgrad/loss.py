@@ -18,11 +18,12 @@ def masked_mean(
     tensor: torch.Tensor,
     mask: torch.Tensor,
     dim: int | None = None,
+    keepdim: bool = False,
     eps: float = 1e-8,
 ) -> torch.Tensor:
     if mask is None:
-        return tensor.mean(dim=dim)
-    return (tensor * mask).sum(dim=dim) / mask.sum(dim=dim).clamp_min(eps)
+        return tensor.mean(dim=dim, keepdim=keepdim)
+    return (tensor * mask).sum(dim=dim, keepdim=keepdim) / mask.sum(dim=dim, keepdim=keepdim).clamp_min(eps)
 
 
 class GRPOLoss(nn.Module):
@@ -60,27 +61,13 @@ class GSPOLoss(nn.Module):
         log_probs: torch.Tensor,
         experience: Experience,
     ) -> torch.Tensor:
-
-
-        seq_logprobs = masked_mean(log_probs - experience.log_probs_old, experience.action_mask, dim=-1).exp()
+        seq_logprobs = masked_mean(
+            log_probs - experience.log_probs_old, experience.action_mask, dim=-1, keepdim=True
+        ).exp()
         unclipped_term = seq_logprobs * experience.advantages
         clipped_term = seq_logprobs.clamp(1.0 - self.clip_eps, 1.0 + self.clip_eps) * experience.advantages
 
         kl_div = approx_kl_div(log_probs, experience.log_probs_ref, experience.action_mask)
-
-        print("-"*20 + " GSPOLoss Debug Info " + "-"*20)
-        print("log_probs.shape", log_probs.shape)
-        print("experience.log_probs_old.shape", experience.log_probs_old.shape)
-        print("experience.advantages.shape", experience.advantages.shape)
-        print("seq_logprobs.shape", seq_logprobs.shape)
-        print("experience.action_mask.shape", experience.action_mask.shape)
-        print("unclipped_term.shape", unclipped_term.shape)
-        print("clipped_term.shape", clipped_term.shape)
-        print("Unclipped_term.shape", unclipped_term.shape)
-        print("Clipped_term.shape", clipped_term.shape)
-        print("KL_div.shape", kl_div.shape)
-        print("-"*60)
-
 
         loss = -torch.min(unclipped_term, clipped_term) + self.beta * kl_div
         loss = masked_mean(loss, experience.action_mask, dim=-1).mean(dim=0)

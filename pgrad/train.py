@@ -170,7 +170,6 @@ def main(args):
     if args.loss_type == "grpo":
         objective = GRPOLoss(args.clip_eps, args.beta)
     elif args.loss_type == "gspo":
-        print("Using GSPOLoss")
         objective = GSPOLoss(args.clip_eps, args.beta)
     else:
         raise ValueError(f"Unsupported loss type: {args.loss_type}")
