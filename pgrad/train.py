@@ -16,7 +16,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 import wandb
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
-from .loss import GRPOLoss
+from .loss import GRPOLoss, GSPOLoss
 
 
 def load_model(model_name: str, trust_remote_code: bool = False, device_map=None):
@@ -166,7 +166,14 @@ def main(args):
     model, tokenizer = load_model(model_name=args.model_name, device_map=model_device)
     model_ref, _ = load_model(model_name=args.model_name, device_map=ref_model_device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    objective = GRPOLoss(args.clip_eps, args.beta)
+
+    if args.loss_type == "grpo":
+        objective = GRPOLoss(args.clip_eps, args.beta)
+    elif args.loss_type == "gspo":
+        print("Using GSPOLoss")
+        objective = GSPOLoss(args.clip_eps, args.beta)
+    else:
+        raise ValueError(f"Unsupported loss type: {args.loss_type}")
 
     model_ref.eval()
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
@@ -174,7 +181,7 @@ def main(args):
     if args.wandb_project is None:
         wandb.init(mode="disabled")
     else:
-        wandb.init(project=args.wandb_project, config=vars(args))
+        wandb.init(project=args.wandb_project, name=args.wandb_run_name, config=vars(args))
 
     print("=" * 80)
     print("MODEL ARCHITECTURE")
@@ -335,8 +342,10 @@ if __name__ == "__main__":
     parser.add_argument("--max_new_tokens", type=int, default=512)
     parser.add_argument("--max_norm", type=float, default=1.0)
     parser.add_argument("--wandb_project", type=str, default="micro-grpo")
+    parser.add_argument("--wandb_run_name", type=str, default=None)
     parser.add_argument("--model_device_id", type=int, default=0)
     parser.add_argument("--ref_model_device_id", type=int, default=1)
+    parser.add_argument("--loss_type", type=str, choices=["grpo", "gspo"], default="grpo")
     args = parser.parse_args()
 
     main(args)
