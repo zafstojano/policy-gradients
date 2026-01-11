@@ -160,9 +160,11 @@ def main(args):
 
     cpu_device = torch.device("cpu")
     if torch.cuda.is_available():
-        model_device, ref_model_device = f"cuda:{args.model_device_id}", f"cuda:{args.ref_model_device_id}"
+        model_device = f"cuda:{args.model_device_id}"
+        ref_model_device = f"cuda:{args.ref_model_device_id}"
+        val_model_device = f"cuda:{args.val_model_device_id}"
     else:
-        model_device, ref_model_device = "cpu", "cpu"
+        model_device, ref_model_device, val_model_device = "cpu", "cpu", "cpu"
 
     dataset = rg.create_dataset(name=args.dataset_name, seed=args.seed, size=args.dataset_size)
     dataloader = DataLoader(
