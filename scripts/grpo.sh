@@ -2,4 +2,5 @@
 
 uv run python -m pgrad.train \
     --loss_type grpo \
+    --compute_kl \
     --wandb_run_name "grpo_spell_backwards"

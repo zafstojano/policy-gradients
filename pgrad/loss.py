@@ -25,32 +25,37 @@ def masked_mean(
 
 
 class GRPOLoss(nn.Module):
-    def __init__(self, clip_eps_lo: float, clip_eps_hi: float, beta: float) -> None:
+    def __init__(self, clip_eps_lo: float, clip_eps_hi: float, beta: float, compute_kl: bool) -> None:
         super().__init__()
         self.clip_eps_lo = clip_eps_lo
         self.clip_eps_hi = clip_eps_hi
         self.beta = beta
+        self.compute_kl = compute_kl
 
     def forward(self, log_probs: torch.Tensor, experience: Experience) -> tuple[torch.Tensor, torch.Tensor]:
         ratio = (log_probs - experience.log_probs_old).exp()
         unclipped_term = ratio * experience.advantages
         clipped_term = ratio.clamp(1.0 - self.clip_eps_lo, 1.0 + self.clip_eps_hi) * experience.advantages
+        loss = -torch.min(unclipped_term, clipped_term)
 
-        kl_div = approx_kl_div(log_probs, experience.log_probs_ref, experience.action_mask)
+        if self.compute_kl:
+            kl_div = approx_kl_div(log_probs, experience.log_probs_ref, experience.action_mask)
+            loss = loss + self.beta * kl_div
+            kl_loss = masked_mean(kl_div.detach(), experience.action_mask, dim=-1).mean(dim=0)
+        else:
+            kl_loss = torch.tensor(0.0, device=log_probs.device)
 
-        loss = -torch.min(unclipped_term, clipped_term) + self.beta * kl_div
         loss = masked_mean(loss, experience.action_mask, dim=-1).mean(dim=0)
-        kl_loss = masked_mean(kl_div.detach(), experience.action_mask, dim=-1).mean(dim=0)
-
         return loss, kl_loss
 
 
 class GSPOLoss(nn.Module):
-    def __init__(self, clip_eps_lo: float, clip_eps_hi: float, beta: float) -> None:
+    def __init__(self, clip_eps_lo: float, clip_eps_hi: float, beta: float, compute_kl: bool) -> None:
         super().__init__()
         self.clip_eps_lo = clip_eps_lo
         self.clip_eps_hi = clip_eps_hi
         self.beta = beta
+        self.compute_kl = compute_kl
 
     def forward(self, log_probs: torch.Tensor, experience: Experience) -> tuple[torch.Tensor, torch.Tensor]:
         seq_logprobs = masked_mean(
@@ -58,48 +63,58 @@ class GSPOLoss(nn.Module):
         ).exp()
         unclipped_term = seq_logprobs * experience.advantages
         clipped_term = seq_logprobs.clamp(1.0 - self.clip_eps_lo, 1.0 + self.clip_eps_hi) * experience.advantages
+        loss = -torch.min(unclipped_term, clipped_term)
 
-        kl_div = approx_kl_div(log_probs, experience.log_probs_ref, experience.action_mask)
+        if self.compute_kl:
+            kl_div = approx_kl_div(log_probs, experience.log_probs_ref, experience.action_mask)
+            loss = loss + self.beta * kl_div
+            kl_loss = masked_mean(kl_div.detach(), experience.action_mask, dim=-1).mean(dim=0)
+        else:
+            kl_loss = torch.tensor(0.0, device=log_probs.device)
 
-        loss = -torch.min(unclipped_term, clipped_term) + self.beta * kl_div
         loss = masked_mean(loss, experience.action_mask, dim=-1).mean(dim=0)
-        kl_loss = masked_mean(kl_div.detach(), experience.action_mask, dim=-1).mean(dim=0)
-
         return loss, kl_loss
 
 
 class RLOOLoss(nn.Module):
-    def __init__(self, beta: float) -> None:
+    def __init__(self, beta: float, compute_kl: bool) -> None:
         super().__init__()
         self.beta = beta
+        self.compute_kl = compute_kl
 
     def forward(self, log_probs: torch.Tensor, experience: Experience) -> tuple[torch.Tensor, torch.Tensor]:
-        rloo_loss = -masked_mean(log_probs * experience.advantages, experience.action_mask, dim=-1).mean(dim=0)
+        loss = -masked_mean(log_probs * experience.advantages, experience.action_mask, dim=-1).mean(dim=0)
 
-        kl_div = approx_kl_div(log_probs, experience.log_probs_ref, experience.action_mask)
-
-        loss = rloo_loss + self.beta * kl_div
-        kl_loss = masked_mean(kl_div.detach(), experience.action_mask, dim=-1).mean(dim=0)
+        if self.compute_kl:
+            kl_div = approx_kl_div(log_probs, experience.log_probs_ref, experience.action_mask)
+            loss = loss + self.beta * masked_mean(kl_div, experience.action_mask, dim=-1).mean(dim=0)
+            kl_loss = masked_mean(kl_div.detach(), experience.action_mask, dim=-1).mean(dim=0)
+        else:
+            kl_loss = torch.tensor(0.0, device=log_probs.device)
 
         return loss, kl_loss
 
 
 class CISPOLoss(nn.Module):
-    def __init__(self, clip_eps_lo: float, clip_eps_hi: float, beta: float) -> None:
+    def __init__(self, clip_eps_lo: float, clip_eps_hi: float, beta: float, compute_kl: bool) -> None:
         super().__init__()
         self.clip_eps_lo = clip_eps_lo
         self.clip_eps_hi = clip_eps_hi
         self.beta = beta
+        self.compute_kl = compute_kl
 
     def forward(self, log_probs: torch.Tensor, experience: Experience) -> tuple[torch.Tensor, torch.Tensor]:
         with torch.no_grad():  # stop gradient flow
             ratio = (log_probs - experience.log_probs_old).exp()
             clipped_ratio = ratio.clamp(1.0 - self.clip_eps_lo, 1.0 + self.clip_eps_hi)
+        loss = -clipped_ratio * experience.advantages * log_probs
 
-        kl_div = approx_kl_div(log_probs, experience.log_probs_ref, experience.action_mask)
+        if self.compute_kl:
+            kl_div = approx_kl_div(log_probs, experience.log_probs_ref, experience.action_mask)
+            loss = loss + self.beta * kl_div
+            kl_loss = masked_mean(kl_div.detach(), experience.action_mask, dim=-1).mean(dim=0)
+        else:
+            kl_loss = torch.tensor(0.0, device=log_probs.device)
 
-        loss = -clipped_ratio * experience.advantages * log_probs + self.beta * kl_div
         loss = masked_mean(loss, experience.action_mask, dim=-1).mean(dim=0)
-        kl_loss = masked_mean(kl_div.detach(), experience.action_mask, dim=-1).mean(dim=0)
-
         return loss, kl_loss

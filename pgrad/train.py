@@ -7,13 +7,12 @@ import reasoning_gym as rg
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+import wandb
 from reasoning_gym.dataset import ProceduralDataset
 from reasoning_gym.utils import SYSTEM_PROMPTS, extract_answer
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
-
-import wandb
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
 from .loss import CISPOLoss, GRPOLoss, GSPOLoss, RLOOLoss
@@ -175,21 +174,23 @@ def main(args):
         collate_fn=lambda x: x,
     )
     model, tokenizer = load_model(model_name=args.model_name, device_map=model_device)
-    model_ref, _ = load_model(model_name=args.model_name, device_map=ref_model_device)
+    if args.compute_kl:
+        model_ref, _ = load_model(model_name=args.model_name, device_map=ref_model_device)
+        model_ref.eval()
+    else:
+        model_ref = None
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     if args.loss_type in ["grpo", "drgrpo"]:
-        objective = GRPOLoss(args.clip_eps_lo, clip_eps_hi=args.clip_eps_hi, beta=args.beta)
+        objective = GRPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.beta, args.compute_kl)
     elif args.loss_type == "gspo":
-        objective = GSPOLoss(args.clip_eps_lo, clip_eps_hi=args.clip_eps_hi, beta=args.beta)
+        objective = GSPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.beta, args.compute_kl)
     elif args.loss_type == "rloo":
-        objective = RLOOLoss(args.beta)
+        objective = RLOOLoss(args.beta, args.compute_kl)
     elif args.loss_type == "cispo":
-        objective = CISPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.beta)
+        objective = CISPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.beta, args.compute_kl)
     else:
         raise ValueError(f"Unsupported loss type: {args.loss_type}")
-
-    model_ref.eval()
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
     if args.wandb_project is None:
@@ -240,7 +241,7 @@ def main(args):
 
             with torch.no_grad():
                 log_probs_old = compute_log_probs(model, sequence_ids, attention_mask)
-                log_probs_ref = compute_log_probs(model_ref, sequence_ids, attention_mask)
+                log_probs_ref = compute_log_probs(model_ref, sequence_ids, attention_mask) if args.compute_kl else None
 
             experience = Experience(
                 sequence_ids=sequence_ids,
@@ -348,6 +349,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B")
     parser.add_argument("--clip_eps_lo", type=float, default=0.2)
     parser.add_argument("--clip_eps_hi", type=float, default=0.2)
+    parser.add_argument("--compute_kl", action="store_true", default=False)
     parser.add_argument("--beta", type=float, default=0.0)
     parser.add_argument("--prompts_per_step", type=int, default=5)
     parser.add_argument("--num_rollouts", type=int, default=8)
