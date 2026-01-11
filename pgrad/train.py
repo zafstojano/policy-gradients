@@ -70,6 +70,11 @@ def compute_advantages(rewards: torch.Tensor, eps: float = 1e-8) -> torch.Tensor
 
 
 @torch.no_grad()
+def compute_nonstandardized_advantages(rewards: torch.Tensor) -> torch.Tensor:
+    return rewards - rewards.mean(dim=0, keepdim=True)
+
+
+@torch.no_grad()
 def compute_loo_advantages(rewards: torch.Tensor) -> torch.Tensor:
     K = rewards.shape[0]
     return (K / (K - 1)) * (rewards - rewards.mean(dim=0, keepdim=True))
@@ -173,7 +178,7 @@ def main(args):
     model_ref, _ = load_model(model_name=args.model_name, device_map=ref_model_device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-    if args.loss_type == "grpo":
+    if args.loss_type in ["grpo", "drgrpo"]:
         objective = GRPOLoss(args.clip_eps_lo, clip_eps_hi=args.clip_eps_hi, beta=args.beta)
     elif args.loss_type == "gspo":
         objective = GSPOLoss(args.clip_eps_lo, clip_eps_hi=args.clip_eps_hi, beta=args.beta)
@@ -224,6 +229,8 @@ def main(args):
 
             if args.loss_type in ["grpo", "gspo"]:
                 advantages = compute_advantages(rewards)
+            elif args.loss_type == "drgrpo":
+                advantages = compute_nonstandardized_advantages(rewards)
             elif args.loss_type in ["rloo", "cispo"]:
                 advantages = compute_loo_advantages(rewards)
             else:
@@ -360,7 +367,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_device_id", type=int, default=0)
     parser.add_argument("--ref_model_device_id", type=int, default=1)
     parser.add_argument("--val_model_device_id", type=int, default=2)
-    parser.add_argument("--loss_type", type=str, choices=["grpo", "gspo", "rloo", "cispo"], default="grpo")
+    parser.add_argument("--loss_type", type=str, choices=["grpo", "drgrpo", "gspo", "rloo", "cispo"], default="grpo")
     args = parser.parse_args()
 
     main(args)
