@@ -1,6 +1,7 @@
 import argparse
 import random
 import re
+import time
 
 import numpy as np
 import reasoning_gym as rg
@@ -209,8 +210,9 @@ def main(args):
 
     for step, batch in enumerate(dataloader):
         print(f"\n{'=' * 80}")
-        print(f"STEP {step}")
-        print("=" * 80)
+        print(f"STEP {step} / {len(dataloader)}")
+
+        start = time.time()
 
         model.eval()
         replay_buffer.clear()
@@ -342,6 +344,10 @@ def main(args):
                     # Reset accumulators
                     accumulated_loss = 0.0
                     accumulated_kl_loss = 0.0
+
+        end = time.time()
+        print(f"\n  Step Time: {end - start:.2f} seconds")
+        print("=" * 80)
 
 
 if __name__ == "__main__":
