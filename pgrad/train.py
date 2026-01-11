@@ -209,7 +209,7 @@ def main(args):
     replay_buffer = ReplayBuffer()
 
     for step, batch in enumerate(dataloader):
-        print(f"\n{'=' * 80}")
+        print(f"\n{'=' * 80}\n")
         print(f"STEP {step} / {len(dataloader)}")
 
         start = time.time()
@@ -347,7 +347,6 @@ def main(args):
 
         end = time.time()
         print(f"\n  Step Time: {end - start:.2f} seconds")
-        print("=" * 80)
 
 
 if __name__ == "__main__":
