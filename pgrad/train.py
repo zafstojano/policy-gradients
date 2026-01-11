@@ -16,7 +16,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 import wandb
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
-from .loss import GRPOLoss, GSPOLoss, RLOOLoss, CISPOLoss
+from .loss import CISPOLoss, GRPOLoss, GSPOLoss, RLOOLoss
 
 
 def load_model(model_name: str, trust_remote_code: bool = False, device_map=None):
