@@ -165,7 +165,7 @@ def main(args):
         ref_model_device = f"cuda:{args.ref_model_device_id}"
         val_model_device = f"cuda:{args.val_model_device_id}"
     else:
-        model_device, ref_model_device, val_model_device = "cpu", "cpu", "cpu"
+        model_device = ref_model_device = val_model_device = "cpu"
 
     dataset = rg.create_dataset(name=args.dataset_name, seed=args.seed, size=args.dataset_size)
     dataloader = DataLoader(
