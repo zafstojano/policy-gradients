@@ -222,9 +222,9 @@ def main(args):
                 min_p=args.min_p,
             )
 
-            if args.loss_type in ["grpo", "gspo", "cispo"]:
+            if args.loss_type in ["grpo", "gspo"]:
                 advantages = compute_advantages(rewards)
-            elif args.loss_type in ["rloo"]:
+            elif args.loss_type in ["rloo", "cispo"]:
                 advantages = compute_loo_advantages(rewards)
             else:
                 advantages = None
