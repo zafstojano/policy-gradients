@@ -16,7 +16,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 import wandb
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
-from .loss import GRPOLoss, GSPOLoss, RLOOLoss
+from .loss import GRPOLoss, GSPOLoss, RLOOLoss, CISPOLoss
 
 
 def load_model(model_name: str, trust_remote_code: bool = False, device_map=None):
@@ -174,11 +174,13 @@ def main(args):
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     if args.loss_type == "grpo":
-        objective = GRPOLoss(args.clip_eps, args.beta)
+        objective = GRPOLoss(args.clip_eps_lo, clip_eps_hi=args.clip_eps_hi, beta=args.beta)
     elif args.loss_type == "gspo":
-        objective = GSPOLoss(args.clip_eps, args.beta)
+        objective = GSPOLoss(args.clip_eps_lo, clip_eps_hi=args.clip_eps_hi, beta=args.beta)
     elif args.loss_type == "rloo":
-        objective = RLOOLoss()
+        objective = RLOOLoss(args.beta)
+    elif args.loss_type == "cispo":
+        objective = CISPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.beta)
     else:
         raise ValueError(f"Unsupported loss type: {args.loss_type}")
 
@@ -190,8 +192,6 @@ def main(args):
     else:
         wandb.init(project=args.wandb_project, name=args.wandb_run_name, config=vars(args))
 
-    print("=" * 80)
-    print("MODEL ARCHITECTURE")
     print("=" * 80)
     print(model)
     print("=" * 80)
@@ -222,7 +222,7 @@ def main(args):
                 min_p=args.min_p,
             )
 
-            if args.loss_type in ["grpo", "gspo"]:
+            if args.loss_type in ["grpo", "gspo", "cispo"]:
                 advantages = compute_advantages(rewards)
             elif args.loss_type in ["rloo"]:
                 advantages = compute_loo_advantages(rewards)
@@ -337,7 +337,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_name", type=str, default="spell_backward")
-    parser.add_argument("--dataset_size", type=int, default=10_000)
+    parser.add_argument("--dataset_size", type=int, default=5_000)
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B")
     parser.add_argument("--clip_eps_lo", type=float, default=0.2)
     parser.add_argument("--clip_eps_hi", type=float, default=0.2)
@@ -360,7 +360,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_device_id", type=int, default=0)
     parser.add_argument("--ref_model_device_id", type=int, default=1)
     parser.add_argument("--val_model_device_id", type=int, default=2)
-    parser.add_argument("--loss_type", type=str, choices=["grpo", "gspo", "rloo"], default="grpo")
+    parser.add_argument("--loss_type", type=str, choices=["grpo", "gspo", "rloo", "cispo"], default="grpo")
     args = parser.parse_args()
 
     main(args)
