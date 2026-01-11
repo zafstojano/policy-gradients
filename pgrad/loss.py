@@ -5,9 +5,7 @@ from .buffer import Experience
 
 
 def approx_kl_div(log_probs: torch.Tensor, log_probs_ref: torch.Tensor, action_mask: torch.Tensor) -> torch.Tensor:
-    """
-    Monte-Carlo approximation of KL divergence, k3 estimator, see: http://joschu.net/blog/kl-approx.html
-    """
+    """Monte-Carlo approximation of KL divergence (k3 estimator). See: http://joschu.net/blog/kl-approx.html"""
     log_ratio = log_probs - log_probs_ref
     if action_mask is not None:
         log_ratio = log_ratio * action_mask
@@ -32,11 +30,7 @@ class GRPOLoss(nn.Module):
         self.clip_eps = clip_eps
         self.beta = beta
 
-    def forward(
-        self,
-        log_probs: torch.Tensor,
-        experience: Experience,
-    ) -> torch.Tensor:
+    def forward(self, log_probs: torch.Tensor, experience: Experience) -> tuple[torch.Tensor, torch.Tensor]:
         ratio = (log_probs - experience.log_probs_old).exp()
         unclipped_term = ratio * experience.advantages
         clipped_term = ratio.clamp(1.0 - self.clip_eps, 1.0 + self.clip_eps) * experience.advantages
@@ -56,11 +50,7 @@ class GSPOLoss(nn.Module):
         self.clip_eps = clip_eps
         self.beta = beta
 
-    def forward(
-        self,
-        log_probs: torch.Tensor,
-        experience: Experience,
-    ) -> torch.Tensor:
+    def forward(self, log_probs: torch.Tensor, experience: Experience) -> tuple[torch.Tensor, torch.Tensor]:
         seq_logprobs = masked_mean(
             log_probs - experience.log_probs_old, experience.action_mask, dim=-1, keepdim=True
         ).exp()
@@ -73,4 +63,14 @@ class GSPOLoss(nn.Module):
         loss = masked_mean(loss, experience.action_mask, dim=-1).mean(dim=0)
         kl_loss = masked_mean(kl_div.detach(), experience.action_mask, dim=-1).mean(dim=0)
 
+        return loss, kl_loss
+
+
+class RLOOLoss(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(self, log_probs: torch.Tensor, experience: Experience) -> tuple[torch.Tensor, torch.Tensor]:
+        loss = -masked_mean(log_probs * experience.advantages, experience.action_mask, dim=-1).mean(dim=0)
+        kl_loss = torch.tensor(0.0, device=log_probs.device)
         return loss, kl_loss

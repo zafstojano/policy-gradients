@@ -8,11 +8,12 @@ import torch.nn.functional as F
 @dataclass
 class Experience:
     sequence_ids: torch.Tensor
-    log_probs_old: torch.Tensor
-    log_probs_ref: torch.Tensor
+    attention_mask: torch.Tensor
+    action_mask: torch.Tensor
+    returns: torch.Tensor | None = None  # TODO, make this non-optional, and compute the returns G_t after rollouts
     advantages: torch.Tensor | None = None
-    attention_mask: torch.Tensor | None = None
-    action_mask: torch.Tensor | None = None
+    log_probs_old: torch.Tensor | None = None
+    log_probs_ref: torch.Tensor | None = None
 
     def to(self, device: torch.device) -> Self:
         field_names = [f.name for f in fields(self)]

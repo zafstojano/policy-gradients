@@ -16,7 +16,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 import wandb
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
-from .loss import GRPOLoss, GSPOLoss
+from .loss import GRPOLoss, GSPOLoss, RLOOLoss
 
 
 def load_model(model_name: str, trust_remote_code: bool = False, device_map=None):
@@ -67,6 +67,12 @@ def compute_rewards(
 @torch.no_grad()
 def compute_advantages(rewards: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     return (rewards - rewards.mean(dim=0, keepdim=True)) / (rewards.std(dim=0, keepdim=True) + eps)
+
+
+@torch.no_grad()
+def compute_loo_advantages(rewards: torch.Tensor) -> torch.Tensor:
+    K = rewards.shape[0]
+    return (K / (K - 1)) * (rewards - rewards.mean(dim=0, keepdim=True))
 
 
 def compute_log_probs(model, sequence_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
@@ -171,6 +177,8 @@ def main(args):
         objective = GRPOLoss(args.clip_eps, args.beta)
     elif args.loss_type == "gspo":
         objective = GSPOLoss(args.clip_eps, args.beta)
+    elif args.loss_type == "rloo":
+        objective = RLOOLoss()
     else:
         raise ValueError(f"Unsupported loss type: {args.loss_type}")
 
@@ -214,7 +222,13 @@ def main(args):
                 min_p=args.min_p,
             )
 
-            advantages = compute_advantages(rewards)
+            if args.loss_type in ["grpo", "gspo"]:
+                advantages = compute_advantages(rewards)
+            elif args.loss_type in ["rloo"]:
+                advantages = compute_loo_advantages(rewards)
+            else:
+                advantages = None
+
             attention_mask = sequence_ids != tokenizer.pad_token_id
 
             with torch.no_grad():
@@ -344,7 +358,7 @@ if __name__ == "__main__":
     parser.add_argument("--wandb_run_name", type=str, default=None)
     parser.add_argument("--model_device_id", type=int, default=0)
     parser.add_argument("--ref_model_device_id", type=int, default=1)
-    parser.add_argument("--loss_type", type=str, choices=["grpo", "gspo"], default="grpo")
+    parser.add_argument("--loss_type", type=str, choices=["grpo", "gspo", "rloo"], default="grpo")
     args = parser.parse_args()
 
     main(args)
