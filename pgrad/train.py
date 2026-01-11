@@ -7,12 +7,13 @@ import reasoning_gym as rg
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
-import wandb
 from reasoning_gym.dataset import ProceduralDataset
 from reasoning_gym.utils import SYSTEM_PROMPTS, extract_answer
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
+
+import wandb
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
 from .loss import GRPOLoss, GSPOLoss, RLOOLoss
@@ -338,8 +339,9 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_name", type=str, default="spell_backward")
     parser.add_argument("--dataset_size", type=int, default=10_000)
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B")
-    parser.add_argument("--clip_eps", type=float, default=0.2)
-    parser.add_argument("--beta", type=float, default=0.01)
+    parser.add_argument("--clip_eps_lo", type=float, default=0.2)
+    parser.add_argument("--clip_eps_hi", type=float, default=0.2)
+    parser.add_argument("--beta", type=float, default=0.0)
     parser.add_argument("--prompts_per_step", type=int, default=5)
     parser.add_argument("--num_rollouts", type=int, default=8)
     parser.add_argument("--train_batch_size", type=int, default=2)
@@ -357,6 +359,7 @@ if __name__ == "__main__":
     parser.add_argument("--wandb_run_name", type=str, default=None)
     parser.add_argument("--model_device_id", type=int, default=0)
     parser.add_argument("--ref_model_device_id", type=int, default=1)
+    parser.add_argument("--val_model_device_id", type=int, default=2)
     parser.add_argument("--loss_type", type=str, choices=["grpo", "gspo", "rloo"], default="grpo")
     args = parser.parse_args()
 
