@@ -347,7 +347,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_name", type=str, default="spell_backward")
-    parser.add_argument("--dataset_size", type=int, default=5_000)
+    parser.add_argument("--dataset_size", type=int, default=3_000)
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B")
     parser.add_argument("--clip_eps_lo", type=float, default=0.2)
     parser.add_argument("--clip_eps_hi", type=float, default=0.2)
