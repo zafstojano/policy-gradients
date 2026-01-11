@@ -211,7 +211,7 @@ def main(args):
 
     for step, batch in enumerate(dataloader):
         print(f"\n{'=' * 80}\n")
-        print(f"STEP {step} / {len(dataloader)}")
+        print(f"[STEP {step}/{len(dataloader)}]")
 
         start = time.time()
 
@@ -372,7 +372,7 @@ if __name__ == "__main__":
     parser.add_argument("--min_p", type=float, default=0.0)
     parser.add_argument("--max_new_tokens", type=int, default=512)
     parser.add_argument("--max_norm", type=float, default=1.0)
-    parser.add_argument("--wandb_project", type=str, default="micro-pgrads")
+    parser.add_argument("--wandb_project", type=str, default="micro-pgrad")
     parser.add_argument("--wandb_run_name", type=str, default=None)
     parser.add_argument("--model_device_id", type=int, default=0)
     parser.add_argument("--ref_model_device_id", type=int, default=1)
