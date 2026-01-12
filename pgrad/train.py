@@ -175,6 +175,7 @@ def rollout(
         do_sample=True,
         max_length=max_length,
         pad_token_id=pad_token_id,
+        progress_bar=True,
     )
     sequence_ids = model.generate(**model_inputs, generation_config=generation_config)
     completion_ids = sequence_ids[:, model_inputs["input_ids"].shape[1] :]
