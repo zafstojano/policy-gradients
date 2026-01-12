@@ -277,9 +277,9 @@ def main(args):
         replay_buffer.clear()
         rollout_rewards, rollout_completions = [], []
 
+        console.print(f"Generating rollouts...")
         for entry in batch:
             with torch.no_grad():
-                console.print(f"Generating rollouts...")
                 sequence_ids, action_mask, attention_mask, rewards, completions = rollout(
                     model=model,
                     dataset=dataset,
