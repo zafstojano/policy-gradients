@@ -14,6 +14,7 @@ class Experience:
     advantages: torch.Tensor | None = None
     log_probs_old: torch.Tensor | None = None
     log_probs_ref: torch.Tensor | None = None
+    values_old: torch.Tensor | None = None
 
     def to(self, device: torch.device) -> Self:
         field_names = [f.name for f in fields(self)]

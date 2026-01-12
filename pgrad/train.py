@@ -18,7 +18,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 import wandb
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
-from .loss import CISPOLoss, GRPOLoss, GSPOLoss, RLOOLoss
+from .loss import CISPOLoss, GRPOLoss, GSPOLoss, PPOLoss, RLOOLoss
 
 
 def load_model(model_name: str, trust_remote_code: bool = False, device_map=None):
@@ -118,6 +118,13 @@ def compute_log_probs(model, sequence_ids: torch.Tensor, attention_mask: torch.T
     return target_log_probs
 
 
+def compute_values(model, sequence_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    sequence_ids, attention_mask = sequence_ids.to(model.device), attention_mask.to(model.device)
+    output = model(input_ids=sequence_ids, attention_mask=attention_mask, use_cache=False)
+    values = output.logits[:, :-1, :].squeeze(-1).to(torch.float32)  # (B, S)
+    return values
+
+
 @torch.no_grad()
 def rollout(
     model,
@@ -212,9 +219,12 @@ def main(args):
         ref_model = None
     if args.loss_type in ["ppo"]:
         val_model, _ = load_model(model_name=args.model_name, device_map=val_model_device)
-        val_model.lm_head = nn.Linear(val_model.lm_head.in_features, 1, bias=False, device=val_model.device)
-        val_model.train()
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+        val_model.lm_head = nn.Linear(
+            val_model.lm_head.in_features, 1, bias=False, device=val_model.device, dtype=torch.bfloat16
+        )
+    else:
+        val_model = None
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)  # TODO: Add value model parameters to optimizer
 
     if args.loss_type in ["grpo", "drgrpo"]:
         objective = GRPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.beta, args.compute_kl)
@@ -224,6 +234,8 @@ def main(args):
         objective = RLOOLoss(args.beta, args.compute_kl)
     elif args.loss_type == "cispo":
         objective = CISPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.beta, args.compute_kl)
+    elif args.loss_type == "ppo":
+        objective = PPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.vf_coef, args.beta, args.compute_kl)
     else:
         raise ValueError(f"Unsupported loss type: {args.loss_type}")
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
@@ -247,6 +259,9 @@ def main(args):
         start = time.time()
 
         model.eval()
+        if val_model:
+            val_model.eval()
+
         replay_buffer.clear()
         rollout_rewards, rollout_completions = [], []
 
@@ -280,6 +295,7 @@ def main(args):
             with torch.no_grad():
                 log_probs_old = compute_log_probs(model, sequence_ids, attention_mask)
                 log_probs_ref = compute_log_probs(ref_model, sequence_ids, attention_mask) if args.compute_kl else None
+                values_old = compute_values(val_model, sequence_ids, attention_mask) if val_model else None
 
             experience = Experience(
                 sequence_ids=sequence_ids,
@@ -289,6 +305,7 @@ def main(args):
                 advantages=advantages,
                 log_probs_old=log_probs_old,
                 log_probs_ref=log_probs_ref,
+                values_old=values_old,
             ).to(cpu_device)
             replay_buffer.add(experience)
 
@@ -317,6 +334,9 @@ def main(args):
 
         torch.cuda.empty_cache()
         model.train()
+        if val_model:
+            val_model.train()
+
         experience_sampler = DataLoader(
             dataset=replay_buffer.buffer,
             batch_size=args.train_batch_size,
@@ -336,8 +356,11 @@ def main(args):
                 experience: Experience
                 experience = experience.to(model.device)
 
+                kwargs = {}
                 log_probs = compute_log_probs(model, experience.sequence_ids, experience.attention_mask)
-                loss, kl_loss = objective(log_probs, experience)
+                if val_model:
+                    kwargs["values"] = compute_values(val_model, experience.sequence_ids, experience.attention_mask)
+                loss, kl_loss = objective(log_probs, experience, **kwargs)
 
                 if not loss.isfinite():
                     print(
@@ -401,6 +424,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--lr", type=float, default=5e-6)
     parser.add_argument("--gamma", type=float, default=0.99)
+    parser.add_argument("--vf_coef", type=float, default=0.1)
     parser.add_argument("--temperature", type=float, default=0.6)
     parser.add_argument("--top_p", type=float, default=0.95)
     parser.add_argument("--top_k", type=int, default=20)
