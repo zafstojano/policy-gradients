@@ -646,7 +646,7 @@ wheels = [
 ]
 
 [[package]]
-name = "micro-pgrads"
+name = "micro-pgrad"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
