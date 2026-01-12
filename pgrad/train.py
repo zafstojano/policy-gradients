@@ -82,25 +82,25 @@ def compute_loo_advantages(rewards: torch.Tensor) -> torch.Tensor:
 
 @torch.no_grad()
 def compute_returns(
-    sequence_ids: torch.Tensor,
     action_mask: torch.Tensor,
     rewards: torch.Tensor,
     gamma: float,
 ) -> torch.Tensor:
-    B, S = sequence_ids.size()
+    B, S = action_mask.size()
 
     last_action_indices = action_mask.long().cumsum(dim=-1).argmax(dim=-1, keepdim=True)  # (B, 1)
-    indices = torch.arange(S, device=sequence_ids.device).unsqueeze(0)  # (1, S)
+    indices = torch.arange(S, device=action_mask.device).unsqueeze(0)  # (1, S)
     done = (indices >= last_action_indices).float()  # (B, S)
 
-    returns = torch.zeros_like(sequence_ids, dtype=torch.float32, device=sequence_ids.device)  # (B, S)
-    running = torch.zeros(B, device=sequence_ids.device, dtype=torch.float32)
+    rewards = torch.zeros_like(action_mask, device=action_mask.device, dtype=torch.float32).scatter_(dim=-1, index=last_action_indices, src=rewards)  # (B, S)
+    returns = torch.zeros_like(action_mask, dtype=torch.float32, device=action_mask.device)  # (B, S)
+    running = torch.zeros(B, device=action_mask.device, dtype=torch.float32)
 
     for t in reversed(range(S)):
         running = rewards[:, t] + gamma * (1.0 - done[:, t]) * running
         returns[:, t] = running
 
-    returns = returns * action_mask.float()
+    returns = returns * action_mask
     return returns
 
 
@@ -171,7 +171,7 @@ def rollout(
 
     # 4. Compute rewards
     rewards = compute_rewards(dataset, completions, entry)
-    rewards = torch.tensor(rewards, dtype=torch.float32).unsqueeze(-1)
+    rewards = torch.tensor(rewards, dtype=torch.float32, device=model.device).unsqueeze(-1)
 
     return sequence_ids, action_mask, rewards, completions
 
@@ -265,7 +265,7 @@ def main(args):
             else:
                 advantages = None
 
-            returns = compute_returns(sequence_ids, action_mask, rewards, args.gamma)
+            returns = compute_returns(action_mask, rewards, gamma=args.gamma)
 
             attention_mask = sequence_ids != tokenizer.pad_token_id
 
@@ -404,7 +404,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_device_id", type=int, default=0)
     parser.add_argument("--ref_model_device_id", type=int, default=1)
     parser.add_argument("--val_model_device_id", type=int, default=2)
-    parser.add_argument("--loss_type", type=str, choices=["grpo", "drgrpo", "gspo", "rloo", "cispo"], default="grpo")
+    parser.add_argument("--loss_type", type=str, choices=["grpo", "drgrpo", "gspo", "rloo", "cispo", "ppo"])
     args = parser.parse_args()
 
     main(args)
