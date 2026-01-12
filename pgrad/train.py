@@ -8,12 +8,13 @@ import reasoning_gym as rg
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
-import wandb
 from reasoning_gym.dataset import ProceduralDataset
 from reasoning_gym.utils import SYSTEM_PROMPTS, extract_answer
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
+
+import wandb
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
 from .loss import CISPOLoss, GRPOLoss, GSPOLoss, RLOOLoss
@@ -92,9 +93,11 @@ def compute_returns(
     indices = torch.arange(S, device=action_mask.device).unsqueeze(0)  # (1, S)
     done = (indices >= last_action_indices).float()  # (B, S)
 
-    rewards = torch.zeros_like(action_mask, device=action_mask.device, dtype=torch.float32).scatter_(dim=-1, index=last_action_indices, src=rewards)  # (B, S)
+    rewards = torch.zeros_like(action_mask, device=action_mask.device, dtype=torch.float32).scatter_(
+        dim=-1, index=last_action_indices, src=rewards
+    )  # (B, S)
     returns = torch.zeros_like(action_mask, dtype=torch.float32, device=action_mask.device)  # (B, S)
-    running = torch.zeros(B, device=action_mask.device, dtype=torch.float32)
+    running = torch.zeros(B, device=action_mask.device, dtype=torch.float32)  # (B,)
 
     for t in reversed(range(S)):
         running = rewards[:, t] + gamma * (1.0 - done[:, t]) * running
