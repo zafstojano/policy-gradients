@@ -11,6 +11,17 @@ import torch.nn.functional as F
 import torch.optim as optim
 from reasoning_gym.dataset import ProceduralDataset
 from reasoning_gym.utils import SYSTEM_PROMPTS, extract_answer
+from rich.console import Console
+from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
+from rich.table import Table
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
@@ -186,7 +197,8 @@ def rollout(
 
 
 def main(args):
-    # Init all random seeds
+    console = Console()
+
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -210,6 +222,17 @@ def main(args):
         collate_fn=lambda x: x,
     )
     model, tokenizer = load_model(model_name=args.model_name, device_map=model_device)
+
+    console.print(
+        Panel(
+            f"[bold magenta]Model:[/bold magenta] {model}\n"
+            f"[dim]Parameters:[/dim] {sum(p.numel() for p in model.parameters()):,}\n"
+            f"[dim]Device:[/dim] {model.device}",
+            title="[bold magenta]Configuration[/bold magenta]",
+            border_style="magenta",
+        )
+    )
+
     if args.beta > 0:
         ref_model, _ = load_model(model_name=args.model_name, device_map=ref_model_device)
         ref_model.eval()
@@ -243,23 +266,14 @@ def main(args):
     else:
         wandb.init(project=args.wandb_project, name=args.wandb_run_name, config=vars(args))
 
-    print("=" * 80)
-    print(model)
-    print("=" * 80)
-    print()
-
     replay_buffer = ReplayBuffer()
 
     for step, batch in enumerate(dataloader):
-        print(f"\n{'=' * 80}\n")
-        print(f"[STEP {step}/{len(dataloader)}]")
-
+        console.rule(f"[bold cyan]STEP {step}/{len(dataloader)}[/bold cyan]", style="cyan")
         start = time.time()
-
         model.eval()
         if val_model:
             val_model.eval()
-
         replay_buffer.clear()
         rollout_rewards, rollout_completions = [], []
 
@@ -308,24 +322,28 @@ def main(args):
                 rollout_completions.append((entry["question"], entry["answer"], completions))
 
         avg_reward = torch.cat(rollout_rewards, dim=0).mean().item()
+        sample_q, sample_a, sample_completions = rollout_completions[0]
+        sample_completion = sample_completions[0]
         wandb.log({"avg_reward": avg_reward})
-        print("\n  Rollout Results:")
-        print(f"    Average Reward: {avg_reward:.4f}")
 
-        # Print a sample completion
-        if rollout_completions:
-            sample_q, sample_a, sample_completions = rollout_completions[0]
-            sample_completion = sample_completions[0]
-
-            # Truncate if needed
-            max_len = 1000
-            if len(sample_completion) > max_len:
-                sample_completion = sample_completion[:max_len] + "..."
-
-            print("\n  Sample Completion:")
-            print(f"    Question: {sample_q}")
-            print(f"    Oracle Answer: {sample_a}")
-            print(f"    Model Completion:\n{sample_completion}")
+        console.print(
+            Panel(
+                f"[bold green]Average Reward:[/bold green] {avg_reward:.4f}",
+                title="[bold cyan]Rollout Results[/bold cyan]",
+                border_style="cyan",
+            )
+        )
+        sample_preview = sample_completion[:1000]
+        if len(sample_completion) > 1000:
+            sample_preview += "[dim]... (truncated)[/dim]"
+        sample_table = Table(show_header=False, box=None, padding=(0, 1), show_edge=False)
+        sample_table.add_column("Label", style="dim", width=12)
+        sample_table.add_column("Content")
+        sample_table.add_row("Question:", sample_q[:150] + ("..." if len(sample_q) > 150 else ""))
+        sample_table.add_row("Oracle:", str(sample_a))
+        sample_table.add_row("Completion:", sample_preview)
+        console.print(Panel(sample_table, title="[bold cyan]Sample[/bold cyan]", border_style="dim"))
+        console.print()
 
         torch.cuda.empty_cache()
         model.train()
@@ -341,8 +359,17 @@ def main(args):
             collate_fn=join_experiences_batch,
         )
 
-        print(f"\n  Training ({args.epochs_per_step} epoch(s)):")
-        for epoch in range(args.epochs_per_step):
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TextColumn("•"),
+            TimeElapsedColumn(),
+            console=console,
+            transient=False,
+        ) as progress:
+
             optimizer.zero_grad(set_to_none=True)
             accumulated_loss = 0.0
 
@@ -357,15 +384,10 @@ def main(args):
                     kwargs["values"] = compute_values(val_model, experience.sequence_ids, experience.attention_mask)
                 loss = objective(log_probs, experience, **kwargs)
                 if not loss.isfinite():
-                    print(
-                        f"    [Epoch {epoch + 1}/{args.epochs_per_step}, Batch {batch_idx + 1}] WARNING: Loss is inf!"
-                    )
+                    console.print(f"[bold yellow]⚠ WARNING:[/bold yellow] Infinite loss (Batch {batch_idx+1})")
                     continue
-
-                # Scale loss by accumulation steps
                 scaled_loss = loss / args.batch_acc
                 scaled_loss.backward()
-
                 accumulated_loss += loss.item()
 
                 # Update weights every batch_acc steps
@@ -375,26 +397,37 @@ def main(args):
                     optimizer.zero_grad(set_to_none=True)
                     torch.cuda.empty_cache()
 
-                    # Log averaged metrics
                     num_accumulated = min(args.batch_acc, (batch_idx % args.batch_acc) + 1)
                     avg_loss = accumulated_loss / num_accumulated
-
                     wandb.log(
                         {
                             "loss": avg_loss,
                             "grad_norm": grad_norm,
                         }
                     )
-                    print(
-                        f"    [Epoch {epoch + 1}/{args.epochs_per_step}, Batch {batch_idx + 1}] "
-                        f" Loss: {avg_loss:.4f} | Grad Norm: {grad_norm:.4f}"
-                    )
 
-                    # Reset accumulators
+                    progress.update(
+                        batch_task,
+                        advance=args.batch_acc,
+                        description=f"  [dim]Loss: {avg_loss:.4f} | Grad: {grad_norm:.4f}[/dim]",
+                    )
                     accumulated_loss = 0.0
+                else:
+                    progress.update(batch_task, advance=1)
+
+            progress.remove_task(batch_task)
+            progress.update(epoch_task, advance=1)
 
         end = time.time()
-        print(f"\n  Step Time: {end - start:.2f} seconds\n")
+
+        # Display step summary
+        timing_table = Table(show_header=False, box=None)
+        timing_table.add_column("Metric", style="dim")
+        timing_table.add_column("Value", style="bold green")
+        timing_table.add_row("Step Time", f"{end - start:.2f}s")
+        timing_table.add_row("Avg Reward", f"{avg_reward:.4f}")
+        console.print(timing_table)
+        console.print()
 
 
 if __name__ == "__main__":
@@ -410,7 +443,6 @@ if __name__ == "__main__":
     parser.add_argument("--num_rollouts", type=int, default=8)
     parser.add_argument("--train_batch_size", type=int, default=2)
     parser.add_argument("--batch_acc", type=int, default=4)
-    parser.add_argument("--epochs_per_step", type=int, default=1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--lr", type=float, default=5e-6)
     parser.add_argument("--gamma", type=float, default=0.99)
