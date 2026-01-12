@@ -409,7 +409,7 @@ def main(args):
 
                     progress.update(
                         batch_task,
-                        advance=args.batch_acc,
+                        advance=1,
                         description=f"Training [dim]Loss: {avg_loss:.4f} | Grad: {grad_norm:.4f}[/dim]",
                     )
                     accumulated_loss = 0.0
