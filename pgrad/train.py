@@ -175,7 +175,6 @@ def rollout(
         do_sample=True,
         max_length=max_length,
         pad_token_id=pad_token_id,
-        progress_bar=True,
     )
     sequence_ids = model.generate(**model_inputs, generation_config=generation_config)
     completion_ids = sequence_ids[:, model_inputs["input_ids"].shape[1] :]
@@ -280,6 +279,7 @@ def main(args):
 
         for entry in batch:
             with torch.no_grad():
+                console.print(f"Generating rollouts...")
                 sequence_ids, action_mask, attention_mask, rewards, completions = rollout(
                     model=model,
                     dataset=dataset,
