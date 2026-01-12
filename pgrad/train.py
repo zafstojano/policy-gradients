@@ -356,12 +356,12 @@ def main(args):
                 experience: Experience
                 experience = experience.to(model.device)
 
+                # Compute loss
                 kwargs = {}
                 log_probs = compute_log_probs(model, experience.sequence_ids, experience.attention_mask)
                 if val_model:
                     kwargs["values"] = compute_values(val_model, experience.sequence_ids, experience.attention_mask)
                 loss, kl_loss = objective(log_probs, experience, **kwargs)
-
                 if not loss.isfinite():
                     print(
                         f"    [Epoch {epoch + 1}/{args.epochs_per_step}, Batch {batch_idx + 1}] WARNING: Loss is inf!"
