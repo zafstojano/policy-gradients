@@ -6,6 +6,7 @@ import time
 import numpy as np
 import reasoning_gym as rg
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from reasoning_gym.dataset import ProceduralDataset
@@ -205,10 +206,14 @@ def main(args):
     )
     model, tokenizer = load_model(model_name=args.model_name, device_map=model_device)
     if args.compute_kl:
-        model_ref, _ = load_model(model_name=args.model_name, device_map=ref_model_device)
-        model_ref.eval()
+        ref_model, _ = load_model(model_name=args.model_name, device_map=ref_model_device)
+        ref_model.eval()
     else:
-        model_ref = None
+        ref_model = None
+    if args.loss_type in ["ppo"]:
+        val_model, _ = load_model(model_name=args.model_name, device_map=val_model_device)
+        val_model.lm_head = nn.Linear(val_model.lm_head.in_features, 1, bias=False, device=val_model.device)
+        val_model.train()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     if args.loss_type in ["grpo", "drgrpo"]:
@@ -274,7 +279,7 @@ def main(args):
 
             with torch.no_grad():
                 log_probs_old = compute_log_probs(model, sequence_ids, attention_mask)
-                log_probs_ref = compute_log_probs(model_ref, sequence_ids, attention_mask) if args.compute_kl else None
+                log_probs_ref = compute_log_probs(ref_model, sequence_ids, attention_mask) if args.compute_kl else None
 
             experience = Experience(
                 sequence_ids=sequence_ids,
