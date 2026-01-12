@@ -100,6 +100,7 @@ def compute_returns(
         running = rewards[:, t] + gamma * (1.0 - done[:, t]) * running
         returns[:, t] = running
 
+    returns = returns * action_mask.float()
     return returns
 
 
