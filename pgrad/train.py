@@ -8,13 +8,12 @@ import reasoning_gym as rg
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+import wandb
 from reasoning_gym.dataset import ProceduralDataset
 from reasoning_gym.utils import SYSTEM_PROMPTS, extract_answer
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
-
-import wandb
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
 from .loss import CISPOLoss, GRPOLoss, GSPOLoss, RLOOLoss
@@ -79,6 +78,29 @@ def compute_nonstandardized_advantages(rewards: torch.Tensor) -> torch.Tensor:
 def compute_loo_advantages(rewards: torch.Tensor) -> torch.Tensor:
     K = rewards.shape[0]
     return (K / (K - 1)) * (rewards - rewards.mean(dim=0, keepdim=True))
+
+
+@torch.no_grad()
+def compute_returns(
+    sequence_ids: torch.Tensor,
+    action_mask: torch.Tensor,
+    rewards: torch.Tensor,
+    gamma: float,
+) -> torch.Tensor:
+    B, S = sequence_ids.size()
+
+    last_action_indices = action_mask.long().cumsum(dim=-1).argmax(dim=-1, keepdim=True)  # (B, 1)
+    indices = torch.arange(S, device=sequence_ids.device).unsqueeze(0)  # (1, S)
+    done = (indices >= last_action_indices).float()  # (B, S)
+
+    returns = torch.zeros_like(sequence_ids, dtype=torch.float32, device=sequence_ids.device)  # (B, S)
+    running = torch.zeros(B, device=sequence_ids.device, dtype=torch.float32)
+
+    for t in reversed(range(S)):
+        running = rewards[:, t] + gamma * (1.0 - done[:, t]) * running
+        returns[:, t] = running
+
+    return returns
 
 
 def compute_log_probs(model, sequence_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
@@ -242,6 +264,8 @@ def main(args):
             else:
                 advantages = None
 
+            returns = compute_returns(sequence_ids, action_mask, rewards, args.gamma)
+
             attention_mask = sequence_ids != tokenizer.pad_token_id
 
             with torch.no_grad():
@@ -250,11 +274,12 @@ def main(args):
 
             experience = Experience(
                 sequence_ids=sequence_ids,
-                log_probs_old=log_probs_old,
-                log_probs_ref=log_probs_ref,
-                advantages=advantages,
                 attention_mask=attention_mask,
                 action_mask=action_mask,
+                returns=returns,
+                advantages=advantages,
+                log_probs_old=log_probs_old,
+                log_probs_ref=log_probs_ref,
             ).to(cpu_device)
             replay_buffer.add(experience)
 
@@ -366,6 +391,7 @@ if __name__ == "__main__":
     parser.add_argument("--epochs_per_step", type=int, default=1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--lr", type=float, default=5e-6)
+    parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--temperature", type=float, default=0.6)
     parser.add_argument("--top_p", type=float, default=0.95)
     parser.add_argument("--top_k", type=int, default=20)

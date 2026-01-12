@@ -10,7 +10,7 @@ class Experience:
     sequence_ids: torch.Tensor
     attention_mask: torch.Tensor
     action_mask: torch.Tensor
-    returns: torch.Tensor | None = None  # TODO, make this non-optional, and compute the returns G_t after rollouts
+    returns: torch.Tensor
     advantages: torch.Tensor | None = None
     log_probs_old: torch.Tensor | None = None
     log_probs_ref: torch.Tensor | None = None
