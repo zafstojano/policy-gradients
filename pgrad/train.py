@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import wandb
 from reasoning_gym.dataset import ProceduralDataset
 from reasoning_gym.utils import SYSTEM_PROMPTS, extract_answer
 from rich.console import Console
@@ -25,8 +26,6 @@ from rich.table import Table
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
-
-import wandb
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
 from .loss import CISPOLoss, GRPOLoss, GSPOLoss, PPOLoss, RLOOLoss
@@ -132,6 +131,19 @@ def compute_values(model, sequence_ids: torch.Tensor, attention_mask: torch.Tens
     return values
 
 
+def progress_bar(console: Console) -> Progress:
+    return Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TextColumn("•"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False,
+    )
+
+
 def rollout(
     model,
     dataset: ProceduralDataset,
@@ -233,7 +245,7 @@ def main(args):
         )
     )
 
-    if args.beta > 0:
+    if args.beta:
         ref_model, _ = load_model(model_name=args.model_name, device_map=ref_model_device)
         ref_model.eval()
     else:
@@ -277,50 +289,54 @@ def main(args):
         replay_buffer.clear()
         rollout_rewards, rollout_completions = [], []
 
-        console.print(f"Generating rollouts...")
-        for entry in batch:
-            with torch.no_grad():
-                sequence_ids, action_mask, attention_mask, rewards, completions = rollout(
-                    model=model,
-                    dataset=dataset,
-                    tokenizer=tokenizer,
-                    entry=entry,
-                    num_rollouts=args.num_rollouts,
-                    max_length=args.max_new_tokens,
-                    temperature=args.temperature,
-                    top_p=args.top_p,
-                    top_k=args.top_k,
-                    min_p=args.min_p,
-                )
+        with progress_bar(console) as progress:
+            rollout_task = progress.add_task("Generating rollouts", total=len(batch))
 
-                if args.loss_type in ["grpo", "gspo"]:
-                    advantages = compute_advantages(rewards)
-                elif args.loss_type in ["drgrpo"]:
-                    advantages = compute_nonstandardized_advantages(rewards)
-                elif args.loss_type in ["rloo", "cispo"]:
-                    advantages = compute_loo_advantages(rewards)
-                else:
-                    advantages = None
+            for entry in batch:
+                with torch.no_grad():
+                    sequence_ids, action_mask, attention_mask, rewards, completions = rollout(
+                        model=model,
+                        dataset=dataset,
+                        tokenizer=tokenizer,
+                        entry=entry,
+                        num_rollouts=args.num_rollouts,
+                        max_length=args.max_new_tokens,
+                        temperature=args.temperature,
+                        top_p=args.top_p,
+                        top_k=args.top_k,
+                        min_p=args.min_p,
+                    )
 
-                returns = compute_returns(action_mask, rewards, gamma=args.gamma)
-                log_probs_old = compute_log_probs(model, sequence_ids, attention_mask)
-                log_probs_ref = compute_log_probs(ref_model, sequence_ids, attention_mask) if args.beta > 0 else None
-                values_old = compute_values(val_model, sequence_ids, attention_mask) if val_model else None
+                    if args.loss_type in ["grpo", "gspo"]:
+                        advantages = compute_advantages(rewards)
+                    elif args.loss_type in ["drgrpo"]:
+                        advantages = compute_nonstandardized_advantages(rewards)
+                    elif args.loss_type in ["rloo", "cispo"]:
+                        advantages = compute_loo_advantages(rewards)
+                    else:
+                        advantages = None
 
-                experience = Experience(
-                    sequence_ids=sequence_ids,
-                    attention_mask=attention_mask,
-                    action_mask=action_mask,
-                    returns=returns,
-                    advantages=advantages,
-                    log_probs_old=log_probs_old,
-                    log_probs_ref=log_probs_ref,
-                    values_old=values_old,
-                ).to(cpu_device)
-                replay_buffer.add(experience)
+                    returns = compute_returns(action_mask, rewards, gamma=args.gamma)
+                    log_probs_old = compute_log_probs(model, sequence_ids, attention_mask)
+                    log_probs_ref = compute_log_probs(ref_model, sequence_ids, attention_mask) if args.beta else None
+                    values_old = compute_values(val_model, sequence_ids, attention_mask) if val_model else None
 
-                rollout_rewards.append(rewards.cpu())
-                rollout_completions.append((entry["question"], entry["answer"], completions))
+                    experience = Experience(
+                        sequence_ids=sequence_ids,
+                        attention_mask=attention_mask,
+                        action_mask=action_mask,
+                        returns=returns,
+                        advantages=advantages,
+                        log_probs_old=log_probs_old,
+                        log_probs_ref=log_probs_ref,
+                        values_old=values_old,
+                    ).to(cpu_device)
+                    replay_buffer.add(experience)
+
+                    rollout_rewards.append(rewards.cpu())
+                    rollout_completions.append((entry["question"], entry["answer"], completions))
+
+                progress.update(rollout_task, advance=1)
 
         avg_reward = torch.cat(rollout_rewards, dim=0).mean().item()
         sample_q, sample_a, sample_completions = rollout_completions[0]
@@ -360,16 +376,7 @@ def main(args):
             collate_fn=join_experiences_batch,
         )
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TextColumn("•"),
-            TimeElapsedColumn(),
-            console=console,
-            transient=False,
-        ) as progress:
+        with progress_bar(console) as progress:
             batch_task = progress.add_task("Training", total=len(experience_sampler))
 
             optimizer.zero_grad(set_to_none=True)
@@ -386,7 +393,7 @@ def main(args):
                     kwargs["values"] = compute_values(val_model, experience.sequence_ids, experience.attention_mask)
                 loss = objective(log_probs, experience, **kwargs)
                 if not loss.isfinite():
-                    console.print(f"[bold yellow]⚠ WARNING:[/bold yellow] Infinite loss (Batch {batch_idx+1})")
+                    console.print(f"[bold yellow]⚠ WARNING:[/bold yellow] Infinite loss (Batch {batch_idx + 1})")
                     continue
                 scaled_loss = loss / args.batch_acc
                 scaled_loss.backward()

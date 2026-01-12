@@ -37,7 +37,7 @@ class GRPOLoss(nn.Module):
         clipped_term = ratio.clamp(1.0 - self.clip_eps_lo, 1.0 + self.clip_eps_hi) * experience.advantages
         policy_loss = -torch.min(unclipped_term, clipped_term)
 
-        if self.beta > 0:
+        if self.beta:
             kl_loss = approx_kl(log_probs, experience.log_probs_ref, experience.action_mask)
         else:
             kl_loss = torch.tensor(0.0, device=log_probs.device)
@@ -62,7 +62,7 @@ class GSPOLoss(nn.Module):
         clipped_term = seq_logprobs.clamp(1.0 - self.clip_eps_lo, 1.0 + self.clip_eps_hi) * experience.advantages
         policy_loss = -torch.min(unclipped_term, clipped_term)
 
-        if self.beta > 0:
+        if self.beta:
             kl_loss = approx_kl(log_probs, experience.log_probs_ref, experience.action_mask)
         else:
             kl_loss = torch.tensor(0.0, device=log_probs.device)
@@ -80,7 +80,7 @@ class RLOOLoss(nn.Module):
     def forward(self, log_probs: torch.Tensor, experience: Experience, **kwargs) -> torch.Tensor:
         policy_loss = -(log_probs * experience.advantages)
 
-        if self.beta > 0:
+        if self.beta:
             kl_loss = approx_kl(log_probs, experience.log_probs_ref, experience.action_mask)
         else:
             kl_loss = torch.tensor(0.0, device=log_probs.device)
@@ -103,7 +103,7 @@ class CISPOLoss(nn.Module):
             clipped_ratio = ratio.clamp(1.0 - self.clip_eps_lo, 1.0 + self.clip_eps_hi)
         policy_loss = -clipped_ratio * experience.advantages * log_probs
 
-        if self.beta > 0:
+        if self.beta:
             kl_loss = approx_kl(log_probs, experience.log_probs_ref, experience.action_mask)
         else:
             kl_loss = torch.tensor(0.0, device=log_probs.device)
@@ -146,7 +146,7 @@ class PPOLoss(nn.Module):
         policy_loss = -torch.min(policy_unclipped_term, policy_clipped_term)
 
         # KL loss
-        if self.beta > 0:
+        if self.beta:
             kl_loss = approx_kl(log_probs, experience.log_probs_ref, experience.action_mask)
         else:
             kl_loss = torch.tensor(0.0, device=log_probs.device)
