@@ -235,7 +235,9 @@ def main(args):
     elif args.loss_type == "cispo":
         objective = CISPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.beta, args.compute_kl)
     elif args.loss_type == "ppo":
-        objective = PPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.vf_coef, args.beta, args.compute_kl)
+        objective = PPOLoss(
+            args.clip_eps_lo, args.clip_eps_hi, args.clip_eps_val, args.vf_coef, args.beta, args.compute_kl
+        )
     else:
         raise ValueError(f"Unsupported loss type: {args.loss_type}")
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
@@ -414,6 +416,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B")
     parser.add_argument("--clip_eps_lo", type=float, default=0.2)
     parser.add_argument("--clip_eps_hi", type=float, default=0.2)
+    parser.add_argument("--clip_eps_val", type=float, default=0.2)
     parser.add_argument("--compute_kl", action="store_true", default=False)
     parser.add_argument("--beta", type=float, default=0.0)
     parser.add_argument("--prompts_per_step", type=int, default=5)
