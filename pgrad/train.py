@@ -210,7 +210,7 @@ def main(args):
         collate_fn=lambda x: x,
     )
     model, tokenizer = load_model(model_name=args.model_name, device_map=model_device)
-    if args.compute_kl:
+    if args.beta > 0:
         ref_model, _ = load_model(model_name=args.model_name, device_map=ref_model_device)
         ref_model.eval()
     else:
@@ -225,17 +225,15 @@ def main(args):
     optimizer = optim.Adam(model.parameters(), lr=args.lr)  # TODO: Add value model parameters to optimizer
 
     if args.loss_type in ["grpo", "drgrpo"]:
-        objective = GRPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.beta, args.compute_kl)
+        objective = GRPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.beta)
     elif args.loss_type == "gspo":
-        objective = GSPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.beta, args.compute_kl)
+        objective = GSPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.beta)
     elif args.loss_type == "rloo":
-        objective = RLOOLoss(args.beta, args.compute_kl)
+        objective = RLOOLoss(args.beta)
     elif args.loss_type == "cispo":
-        objective = CISPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.beta, args.compute_kl)
+        objective = CISPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.beta)
     elif args.loss_type == "ppo":
-        objective = PPOLoss(
-            args.clip_eps_lo, args.clip_eps_hi, args.clip_eps_val, args.vf_coef, args.beta, args.compute_kl
-        )
+        objective = PPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.clip_eps_val, args.vf_coef, args.beta)
     else:
         raise ValueError(f"Unsupported loss type: {args.loss_type}")
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
@@ -291,7 +289,7 @@ def main(args):
 
                 returns = compute_returns(action_mask, rewards, gamma=args.gamma)
                 log_probs_old = compute_log_probs(model, sequence_ids, attention_mask)
-                log_probs_ref = compute_log_probs(ref_model, sequence_ids, attention_mask) if args.compute_kl else None
+                log_probs_ref = compute_log_probs(ref_model, sequence_ids, attention_mask) if args.beta > 0 else None
                 values_old = compute_values(val_model, sequence_ids, attention_mask) if val_model else None
 
                 experience = Experience(
@@ -347,7 +345,6 @@ def main(args):
         for epoch in range(args.epochs_per_step):
             optimizer.zero_grad(set_to_none=True)
             accumulated_loss = 0.0
-            accumulated_kl_loss = 0.0
 
             for batch_idx, experience in enumerate(experience_sampler):
                 experience: Experience
@@ -358,7 +355,7 @@ def main(args):
                 log_probs = compute_log_probs(model, experience.sequence_ids, experience.attention_mask)
                 if val_model:
                     kwargs["values"] = compute_values(val_model, experience.sequence_ids, experience.attention_mask)
-                loss, kl_loss = objective(log_probs, experience, **kwargs)
+                loss = objective(log_probs, experience, **kwargs)
                 if not loss.isfinite():
                     print(
                         f"    [Epoch {epoch + 1}/{args.epochs_per_step}, Batch {batch_idx + 1}] WARNING: Loss is inf!"
@@ -370,7 +367,6 @@ def main(args):
                 scaled_loss.backward()
 
                 accumulated_loss += loss.item()
-                accumulated_kl_loss += kl_loss.item()
 
                 # Update weights every batch_acc steps
                 if (batch_idx + 1) % args.batch_acc == 0 or (batch_idx + 1) == len(experience_sampler):
@@ -382,23 +378,20 @@ def main(args):
                     # Log averaged metrics
                     num_accumulated = min(args.batch_acc, (batch_idx % args.batch_acc) + 1)
                     avg_loss = accumulated_loss / num_accumulated
-                    avg_kl_loss = accumulated_kl_loss / num_accumulated
 
                     wandb.log(
                         {
                             "loss": avg_loss,
-                            "kl_loss": avg_kl_loss,
                             "grad_norm": grad_norm,
                         }
                     )
                     print(
                         f"    [Epoch {epoch + 1}/{args.epochs_per_step}, Batch {batch_idx + 1}] "
-                        f" Loss: {avg_loss:.4f} | KL: {avg_kl_loss:.4f} | Grad Norm: {grad_norm:.4f}"
+                        f" Loss: {avg_loss:.4f} | Grad Norm: {grad_norm:.4f}"
                     )
 
                     # Reset accumulators
                     accumulated_loss = 0.0
-                    accumulated_kl_loss = 0.0
 
         end = time.time()
         print(f"\n  Step Time: {end - start:.2f} seconds\n")
@@ -412,7 +405,6 @@ if __name__ == "__main__":
     parser.add_argument("--clip_eps_lo", type=float, default=0.2)
     parser.add_argument("--clip_eps_hi", type=float, default=0.2)
     parser.add_argument("--clip_eps_val", type=float, default=0.2)
-    parser.add_argument("--compute_kl", action="store_true", default=False)
     parser.add_argument("--beta", type=float, default=0.0)
     parser.add_argument("--prompts_per_step", type=int, default=5)
     parser.add_argument("--num_rollouts", type=int, default=8)
