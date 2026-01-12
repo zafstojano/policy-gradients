@@ -1,7 +1,6 @@
 import argparse
 import random
 import re
-import time
 
 import numpy as np
 import reasoning_gym as rg
@@ -9,7 +8,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import wandb
 from reasoning_gym.dataset import ProceduralDataset
 from reasoning_gym.utils import SYSTEM_PROMPTS, extract_answer
 from rich.console import Console
@@ -26,6 +24,8 @@ from rich.table import Table
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
+
+import wandb
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
 from .loss import CISPOLoss, GRPOLoss, GSPOLoss, PPOLoss, RLOOLoss
@@ -282,7 +282,6 @@ def main(args):
 
     for step, batch in enumerate(dataloader):
         console.rule(f"[bold cyan]STEP {step}/{len(dataloader)}[/bold cyan]", style="cyan")
-        start = time.time()
         model.eval()
         if val_model:
             val_model.eval()
@@ -290,7 +289,7 @@ def main(args):
         rollout_rewards, rollout_completions = [], []
 
         with progress_bar(console) as progress:
-            rollout_task = progress.add_task("Generating rollouts", total=len(batch))
+            task = progress.add_task("Generating rollouts", total=len(batch))
 
             for entry in batch:
                 with torch.no_grad():
@@ -336,7 +335,7 @@ def main(args):
                     rollout_rewards.append(rewards.cpu())
                     rollout_completions.append((entry["question"], entry["answer"], completions))
 
-                progress.update(rollout_task, advance=1)
+                progress.update(task, advance=1)
 
         avg_reward = torch.cat(rollout_rewards, dim=0).mean().item()
         sample_q, sample_a, sample_completions = rollout_completions[0]
@@ -377,7 +376,7 @@ def main(args):
         )
 
         with progress_bar(console) as progress:
-            batch_task = progress.add_task("Training", total=len(experience_sampler))
+            task = progress.add_task("Training", total=len(experience_sampler))
 
             optimizer.zero_grad(set_to_none=True)
             accumulated_loss = 0.0
@@ -416,24 +415,13 @@ def main(args):
                     )
 
                     progress.update(
-                        batch_task,
+                        task,
                         advance=1,
-                        description=f"Training [dim]Loss: {avg_loss:.4f} | Grad: {grad_norm:.4f}[/dim]",
+                        description=f"[dim]Loss: {avg_loss:.4f} | Grad: {grad_norm:.4f}[/dim]",
                     )
                     accumulated_loss = 0.0
                 else:
-                    progress.update(batch_task, advance=1)
-
-        end = time.time()
-
-        # Display step summary
-        timing_table = Table(show_header=False, box=None)
-        timing_table.add_column("Metric", style="dim")
-        timing_table.add_column("Value", style="bold green")
-        timing_table.add_row("Step Time", f"{end - start:.2f}s")
-        timing_table.add_row("Avg Reward", f"{avg_reward:.4f}")
-        console.print(timing_table)
-        console.print()
+                    progress.update(task, advance=1)
 
 
 if __name__ == "__main__":
