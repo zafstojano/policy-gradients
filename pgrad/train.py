@@ -66,23 +66,19 @@ def compute_rewards(
     return combined_rewards
 
 
-@torch.no_grad()
 def compute_advantages(rewards: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     return (rewards - rewards.mean(dim=0, keepdim=True)) / (rewards.std(dim=0, keepdim=True) + eps)
 
 
-@torch.no_grad()
 def compute_nonstandardized_advantages(rewards: torch.Tensor) -> torch.Tensor:
     return rewards - rewards.mean(dim=0, keepdim=True)
 
 
-@torch.no_grad()
 def compute_loo_advantages(rewards: torch.Tensor) -> torch.Tensor:
     K = rewards.shape[0]
     return (K / (K - 1)) * (rewards - rewards.mean(dim=0, keepdim=True))
 
 
-@torch.no_grad()
 def compute_returns(
     action_mask: torch.Tensor,
     rewards: torch.Tensor,
@@ -125,7 +121,6 @@ def compute_values(model, sequence_ids: torch.Tensor, attention_mask: torch.Tens
     return values
 
 
-@torch.no_grad()
 def rollout(
     model,
     dataset: ProceduralDataset,
@@ -184,7 +179,10 @@ def rollout(
     rewards = compute_rewards(dataset, completions, entry)
     rewards = torch.tensor(rewards, dtype=torch.float32, device=model.device).unsqueeze(-1)
 
-    return sequence_ids, action_mask, rewards, completions
+    # 5. Compute attention mask
+    attention_mask = sequence_ids != tokenizer.pad_token_id
+
+    return sequence_ids, action_mask, attention_mask, rewards, completions
 
 
 def main(args):
@@ -268,51 +266,48 @@ def main(args):
         rollout_rewards, rollout_completions = [], []
 
         for entry in batch:
-            sequence_ids, action_mask, rewards, completions = rollout(
-                model=model,
-                dataset=dataset,
-                tokenizer=tokenizer,
-                entry=entry,
-                num_rollouts=args.num_rollouts,
-                max_length=args.max_new_tokens,
-                temperature=args.temperature,
-                top_p=args.top_p,
-                top_k=args.top_k,
-                min_p=args.min_p,
-            )
-
-            if args.loss_type in ["grpo", "gspo"]:
-                advantages = compute_advantages(rewards)
-            elif args.loss_type in ["drgrpo"]:
-                advantages = compute_nonstandardized_advantages(rewards)
-            elif args.loss_type in ["rloo", "cispo"]:
-                advantages = compute_loo_advantages(rewards)
-            else:
-                advantages = None
-
-            returns = compute_returns(action_mask, rewards, gamma=args.gamma)
-
-            attention_mask = sequence_ids != tokenizer.pad_token_id
-
             with torch.no_grad():
+                sequence_ids, action_mask, attention_mask, rewards, completions = rollout(
+                    model=model,
+                    dataset=dataset,
+                    tokenizer=tokenizer,
+                    entry=entry,
+                    num_rollouts=args.num_rollouts,
+                    max_length=args.max_new_tokens,
+                    temperature=args.temperature,
+                    top_p=args.top_p,
+                    top_k=args.top_k,
+                    min_p=args.min_p,
+                )
+
+                if args.loss_type in ["grpo", "gspo"]:
+                    advantages = compute_advantages(rewards)
+                elif args.loss_type in ["drgrpo"]:
+                    advantages = compute_nonstandardized_advantages(rewards)
+                elif args.loss_type in ["rloo", "cispo"]:
+                    advantages = compute_loo_advantages(rewards)
+                else:
+                    advantages = None
+
+                returns = compute_returns(action_mask, rewards, gamma=args.gamma)
                 log_probs_old = compute_log_probs(model, sequence_ids, attention_mask)
                 log_probs_ref = compute_log_probs(ref_model, sequence_ids, attention_mask) if args.compute_kl else None
                 values_old = compute_values(val_model, sequence_ids, attention_mask) if val_model else None
 
-            experience = Experience(
-                sequence_ids=sequence_ids,
-                attention_mask=attention_mask,
-                action_mask=action_mask,
-                returns=returns,
-                advantages=advantages,
-                log_probs_old=log_probs_old,
-                log_probs_ref=log_probs_ref,
-                values_old=values_old,
-            ).to(cpu_device)
-            replay_buffer.add(experience)
+                experience = Experience(
+                    sequence_ids=sequence_ids,
+                    attention_mask=attention_mask,
+                    action_mask=action_mask,
+                    returns=returns,
+                    advantages=advantages,
+                    log_probs_old=log_probs_old,
+                    log_probs_ref=log_probs_ref,
+                    values_old=values_old,
+                ).to(cpu_device)
+                replay_buffer.add(experience)
 
-            rollout_rewards.append(rewards.detach().cpu())
-            rollout_completions.append((entry["question"], entry["answer"], completions))
+                rollout_rewards.append(rewards.cpu())
+                rollout_completions.append((entry["question"], entry["answer"], completions))
 
         avg_reward = torch.cat(rollout_rewards, dim=0).mean().item()
         wandb.log({"avg_reward": avg_reward})
