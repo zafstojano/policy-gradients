@@ -369,6 +369,7 @@ def main(args):
             console=console,
             transient=False,
         ) as progress:
+            batch_task = progress.add_task("Training", total=len(experience_sampler))
 
             optimizer.zero_grad(set_to_none=True)
             accumulated_loss = 0.0
@@ -409,14 +410,11 @@ def main(args):
                     progress.update(
                         batch_task,
                         advance=args.batch_acc,
-                        description=f"  [dim]Loss: {avg_loss:.4f} | Grad: {grad_norm:.4f}[/dim]",
+                        description=f"Training [dim]Loss: {avg_loss:.4f} | Grad: {grad_norm:.4f}[/dim]",
                     )
                     accumulated_loss = 0.0
                 else:
                     progress.update(batch_task, advance=1)
-
-            progress.remove_task(batch_task)
-            progress.update(epoch_task, advance=1)
 
         end = time.time()
 
