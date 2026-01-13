@@ -108,6 +108,8 @@ def compute_returns(
 
 
 def compute_log_probs(model, sequence_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    if not model:
+        return None
     sequence_ids, attention_mask = sequence_ids.to(model.device), attention_mask.to(model.device)
     output = model(input_ids=sequence_ids, attention_mask=attention_mask, use_cache=False)
     logits = output.logits[:, :-1, :].to(torch.float32)
@@ -118,6 +120,8 @@ def compute_log_probs(model, sequence_ids: torch.Tensor, attention_mask: torch.T
 
 
 def compute_values(model, sequence_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    if not model:
+        return None
     sequence_ids, attention_mask = sequence_ids.to(model.device), attention_mask.to(model.device)
     output = model(input_ids=sequence_ids, attention_mask=attention_mask, use_cache=False)
     values = output.logits[:, :-1, :].squeeze(-1).to(torch.float32)  # (B, S)
@@ -310,8 +314,8 @@ def main(args):
 
                     returns = compute_returns(action_mask, rewards, gamma=args.gamma)
                     log_probs_old = compute_log_probs(model, sequence_ids, attention_mask)
-                    log_probs_ref = compute_log_probs(ref_model, sequence_ids, attention_mask) if args.beta else None
-                    values_old = compute_values(val_model, sequence_ids, attention_mask) if val_model else None
+                    log_probs_ref = compute_log_probs(ref_model, sequence_ids, attention_mask)
+                    values_old = compute_values(val_model, sequence_ids, attention_mask)
 
                     experience = Experience(
                         sequence_ids=sequence_ids,
@@ -379,11 +383,9 @@ def main(args):
                 experience = experience.to(model.device)
 
                 # Compute loss
-                kwargs = {}
                 log_probs = compute_log_probs(model, experience.sequence_ids, experience.attention_mask)
-                if val_model:
-                    kwargs["values"] = compute_values(val_model, experience.sequence_ids, experience.attention_mask)
-                loss = objective(log_probs, experience, **kwargs)
+                values = compute_values(val_model, experience.sequence_ids, experience.attention_mask)
+                loss = objective(log_probs=log_probs, experience=experience, values=values)
                 if not loss.isfinite():
                     console.print(f"[bold yellow]⚠ WARNING:[/bold yellow] Infinite loss (Batch {batch_idx + 1})")
                     continue
