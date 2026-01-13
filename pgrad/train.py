@@ -124,19 +124,6 @@ def compute_values(model, sequence_ids: torch.Tensor, attention_mask: torch.Tens
     return values
 
 
-def progress_bar(console: Console) -> Progress:
-    return Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TextColumn("•"),
-        TimeElapsedColumn(),
-        console=console,
-        transient=False,
-    )
-
-
 def rollout(
     model,
     dataset: ProceduralDataset,
@@ -199,6 +186,19 @@ def rollout(
     attention_mask = sequence_ids != tokenizer.pad_token_id
 
     return sequence_ids, action_mask, attention_mask, rewards, completions
+
+
+def progress_bar(console: Console) -> Progress:
+    return Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TextColumn("•"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False,
+    )
 
 
 def main(args):
@@ -274,7 +274,7 @@ def main(args):
     replay_buffer = ReplayBuffer()
 
     for step, batch in enumerate(dataloader):
-        console.rule(f"[bold cyan]STEP {step}/{len(dataloader)}[/bold cyan]", style="cyan")
+        console.rule(f"[bold cyan]STEP {step + 1}/{len(dataloader)}[/bold cyan]", style="cyan")
         model.eval()
         if val_model:
             val_model.eval()
@@ -330,11 +330,11 @@ def main(args):
 
                 progress.update(task, advance=1)
 
+        # Summarize rollouts
         avg_reward = torch.cat(rollout_rewards, dim=0).mean().item()
         sample_q, sample_a, sample_completions = rollout_completions[0]
         sample_completion = sample_completions[0]
         wandb.log({"avg_reward": avg_reward})
-
         console.print(
             Panel(
                 f"[bold green]Average Reward:[/bold green] {avg_reward:.4f}",
@@ -400,18 +400,8 @@ def main(args):
 
                     num_accumulated = min(args.batch_acc, (batch_idx % args.batch_acc) + 1)
                     avg_loss = accumulated_loss / num_accumulated
-                    wandb.log(
-                        {
-                            "loss": avg_loss,
-                            "grad_norm": grad_norm,
-                        }
-                    )
-
-                    progress.update(
-                        task,
-                        advance=1,
-                        description=f"[dim]Loss: {avg_loss:.4f} | Grad: {grad_norm:.4f}[/dim]",
-                    )
+                    wandb.log({"loss": avg_loss, "grad_norm": grad_norm})
+                    progress.update(task, advance=1, description=f"[dim]Loss: {avg_loss:.4f}[/dim]")
                     accumulated_loss = 0.0
                 else:
                     progress.update(task, advance=1)
