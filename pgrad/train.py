@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from reasoning_gym.composite import DatasetSpec
 from reasoning_gym.dataset import ProceduralDataset
 from reasoning_gym.utils import SYSTEM_PROMPTS, extract_answer
 from rich.console import Console
@@ -23,6 +24,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 import wandb
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
+from .config import Config, load_config
 from .loss import CISPOLoss, GRPOLoss, GSPOLoss, PPOLoss, ReinforceLoss, approx_kl, masked_mean
 
 
@@ -290,52 +292,57 @@ def progress_bar(console: Console) -> Progress:
     )
 
 
-def main(args):
-    seed_everything(args.seed)
+def create_dataset(cfg: Config) -> ProceduralDataset:
+    specs = [DatasetSpec(name=s.name, weight=s.weight, config=s.config) for s in cfg.data.specs]
+    return rg.create_dataset("composite", size=cfg.data.size, seed=cfg.seed, datasets=specs)
+
+
+def main(cfg: Config):
+    seed_everything(cfg.seed)
     console = Console()
 
     cpu_device = torch.device("cpu")
     if torch.cuda.is_available():
-        model_device = torch.device(f"cuda:{args.model_device_id}")
-        ref_model_device = torch.device(f"cuda:{args.ref_model_device_id}")
-        val_model_device = torch.device(f"cuda:{args.val_model_device_id}")
+        model_device = torch.device(f"cuda:{cfg.model_device_id}")
+        ref_model_device = torch.device(f"cuda:{cfg.ref_model_device_id}")
+        val_model_device = torch.device(f"cuda:{cfg.val_model_device_id}")
     else:
         model_device = ref_model_device = val_model_device = cpu_device
 
-    dataset = rg.create_dataset(name=args.dataset_name, seed=args.seed, size=args.dataset_size)
+    dataset = create_dataset(cfg)
     dataloader = DataLoader(
         dataset=dataset,
-        batch_size=args.prompts_per_step,
+        batch_size=cfg.prompts_per_step,
         shuffle=True,
         pin_memory=False,
         drop_last=True,
         collate_fn=lambda x: x,
     )
-    model, tokenizer = load_model(args.model_name, model_device, gradient_checkpointing=True)
-    ref_model = get_ref_model(args.model_name, ref_model_device, args.beta)
-    val_model = get_val_model(args.model_name, val_model_device, args.loss, gradient_checkpointing=True)
+    model, tokenizer = load_model(cfg.model_name, model_device, gradient_checkpointing=True)
+    ref_model = get_ref_model(cfg.model_name, ref_model_device, cfg.beta)
+    val_model = get_val_model(cfg.model_name, val_model_device, cfg.loss, gradient_checkpointing=True)
     objective = get_loss_objective(
-        loss=args.loss,
-        clip_eps_lo=args.clip_eps_lo,
-        clip_eps_hi=args.clip_eps_hi,
-        clip_eps_val=args.clip_eps_val,
-        vf_coef=args.vf_coef,
-        beta=args.beta,
+        loss=cfg.loss,
+        clip_eps_lo=cfg.clip_eps_lo,
+        clip_eps_hi=cfg.clip_eps_hi,
+        clip_eps_val=cfg.clip_eps_val,
+        vf_coef=cfg.vf_coef,
+        beta=cfg.beta,
     ).to(model.device)
     params = list(model.parameters()) + (list(val_model.parameters()) if val_model else [])
-    optimizer = optim.Adam(params, lr=args.lr)
+    optimizer = optim.Adam(params, lr=cfg.lr)
     replay_buffer = ReplayBuffer()
 
-    if args.wandb_project is None:
+    if cfg.wandb_project is None:
         wandb.init(mode="disabled")
     else:
-        wandb.init(project=args.wandb_project, name=args.wandb_run_name, config=vars(args))
+        wandb.init(project=cfg.wandb_project, name=cfg.wandb_run_name, config=vars(cfg))
     console.print(
         Panel(
             f"[bold magenta]Model:[/bold magenta] {model}\n"
             f"[dim]Parameters:[/dim] {sum(p.numel() for p in model.parameters()):,}\n"
             f"[dim]Device:[/dim] {model.device}\n"
-            f"[dim]Loss:[/dim] {args.loss}",
+            f"[dim]Loss:[/dim] {cfg.loss}",
             title="[bold magenta]Configuration[/bold magenta]",
             border_style="magenta",
         )
@@ -359,12 +366,12 @@ def main(args):
                         dataset=dataset,
                         tokenizer=tokenizer,
                         entry=entry,
-                        num_rollouts=args.num_rollouts,
-                        max_length=args.max_new_tokens,
-                        temperature=args.temperature,
-                        top_p=args.top_p,
-                        top_k=args.top_k,
-                        min_p=args.min_p,
+                        num_rollouts=cfg.num_rollouts,
+                        max_length=cfg.max_new_tokens,
+                        temperature=cfg.temperature,
+                        top_p=cfg.top_p,
+                        top_k=cfg.top_k,
+                        min_p=cfg.min_p,
                     )
                     rollout_rewards.append(rewards.cpu())
                     rollout_completions.append((entry["question"], entry["answer"], completions))
@@ -372,8 +379,8 @@ def main(args):
                     log_probs_old = compute_log_probs(model, sequence_ids, attention_mask)
                     log_probs_ref = compute_log_probs(ref_model, sequence_ids, attention_mask)
                     values_old = compute_values(val_model, sequence_ids, attention_mask)
-                    rewards = apply_reward_kl(rewards, log_probs_old, log_probs_ref, action_mask, args.beta, args.loss)
-                    advantages = compute_advantages(rewards, args.loss, action_mask, values_old, args.gamma, args.lam)
+                    rewards = apply_reward_kl(rewards, log_probs_old, log_probs_ref, action_mask, cfg.beta, cfg.loss)
+                    advantages = compute_advantages(rewards, cfg.loss, action_mask, values_old, cfg.gamma, cfg.lam)
 
                     experience = Experience(
                         sequence_ids=sequence_ids,
@@ -419,7 +426,7 @@ def main(args):
 
         experience_sampler = DataLoader(
             dataset=replay_buffer.buffer,
-            batch_size=args.train_batch_size,
+            batch_size=cfg.train_batch_size,
             shuffle=True,
             pin_memory=False,
             drop_last=True,
@@ -443,18 +450,18 @@ def main(args):
                 if not loss.isfinite():
                     console.print(f"[bold yellow]⚠ WARNING:[/bold yellow] Infinite loss (Batch {batch_idx + 1})")
                     continue
-                scaled_loss = loss / args.batch_acc
+                scaled_loss = loss / cfg.batch_acc
                 scaled_loss.backward()
                 accumulated_loss += loss.item()
 
                 # Update weights every batch_acc steps
-                if (batch_idx + 1) % args.batch_acc == 0 or (batch_idx + 1) == len(experience_sampler):
-                    grad_norm = clip_grad_norm_(params, max_norm=args.max_norm)
+                if (batch_idx + 1) % cfg.batch_acc == 0 or (batch_idx + 1) == len(experience_sampler):
+                    grad_norm = clip_grad_norm_(params, max_norm=cfg.max_norm)
                     optimizer.step()
                     optimizer.zero_grad(set_to_none=True)
                     torch.cuda.empty_cache()
 
-                    num_accumulated = min(args.batch_acc, (batch_idx % args.batch_acc) + 1)
+                    num_accumulated = min(cfg.batch_acc, (batch_idx % cfg.batch_acc) + 1)
                     avg_loss = accumulated_loss / num_accumulated
                     wandb.log({"loss": avg_loss, "grad_norm": grad_norm})
                     progress.update(task, advance=1, description=f"[dim]Loss: {avg_loss:.4f}[/dim]")
@@ -465,34 +472,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_name", type=str, default="spell_backward")
-    parser.add_argument("--dataset_size", type=int, default=3_000)
-    parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B")
-    parser.add_argument("--clip_eps_lo", type=float, default=0.2)
-    parser.add_argument("--clip_eps_hi", type=float, default=0.2)
-    parser.add_argument("--clip_eps_val", type=float, default=0.2)
-    parser.add_argument("--beta", type=float, default=0.0)
-    parser.add_argument("--prompts_per_step", type=int, default=5)
-    parser.add_argument("--num_rollouts", type=int, default=8)
-    parser.add_argument("--train_batch_size", type=int, default=2)
-    parser.add_argument("--batch_acc", type=int, default=4)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--lr", type=float, default=5e-6)
-    parser.add_argument("--gamma", type=float, default=0.99)
-    parser.add_argument("--lam", type=float, default=0.95)
-    parser.add_argument("--vf_coef", type=float, default=0.1)
-    parser.add_argument("--temperature", type=float, default=0.6)
-    parser.add_argument("--top_p", type=float, default=0.95)
-    parser.add_argument("--top_k", type=int, default=20)
-    parser.add_argument("--min_p", type=float, default=0.0)
-    parser.add_argument("--max_new_tokens", type=int, default=512)
-    parser.add_argument("--max_norm", type=float, default=1.0)
-    parser.add_argument("--wandb_project", type=str, default="micro-pgrad")
-    parser.add_argument("--wandb_run_name", type=str, default=None)
-    parser.add_argument("--model_device_id", type=int, default=0)
-    parser.add_argument("--ref_model_device_id", type=int, default=1)
-    parser.add_argument("--val_model_device_id", type=int, default=2)
-    parser.add_argument("--loss", type=str, choices=["grpo", "drgrpo", "gspo", "reinforce", "rloo", "cispo", "ppo"])
+    parser.add_argument("--config", type=str, required=True)
     args = parser.parse_args()
-
-    main(args)
+    cfg = load_config(args.config)
+    main(cfg)

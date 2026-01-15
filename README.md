@@ -1,4 +1,30 @@
-# Installation
+
+
+
+# Policy Grads
+
+A minimal hackable implementation of policy gradients for training large language models with reinforcement learning.
+
+
+
+## Data
+This project is using Reasoning Gym for generating procedural datasets. In the yaml file simply specify which datasets you want to use, along with their configurations. For example:
+
+```yaml
+data:
+  size: 3000
+  specs:
+    - name: spell_backward
+      weight: 1
+      config:
+        min_word_len: 3
+        max_word_len: 10
+    # To add more datasets in the mixture, simply list them here
+    # - name: leg_counting
+    #   weight: 1
+```
+
+## Installation
 
 ```
 # install uv
