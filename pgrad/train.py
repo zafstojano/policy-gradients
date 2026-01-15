@@ -140,6 +140,7 @@ def compute_returns(
     returns = returns * action_mask
     return returns
 
+
 def apply_kl(
     rewards: torch.Tensor,
     log_probs: torch.Tensor,
@@ -184,12 +185,6 @@ def compute_advantages(rewards: torch.Tensor, loss: str) -> torch.Tensor:
         return compute_ppo_advantages(rewards)
     else:
         return rewards
-
-
-
-
-
-
 
 
 def compute_log_probs(model, sequence_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
