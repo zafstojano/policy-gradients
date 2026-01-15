@@ -25,7 +25,7 @@ def masked_mean(
 
 
 class GRPOLoss(nn.Module):
-    def __init__(self, clip_eps_lo: float, clip_eps_hi: float, beta: float) -> None:
+    def __init__(self, clip_eps_lo: float, clip_eps_hi: float, beta: float, **kwargs) -> None:
         super().__init__()
         self.clip_eps_lo = clip_eps_lo
         self.clip_eps_hi = clip_eps_hi
@@ -50,7 +50,7 @@ class GRPOLoss(nn.Module):
 
 
 class GSPOLoss(nn.Module):
-    def __init__(self, clip_eps_lo: float, clip_eps_hi: float, beta: float) -> None:
+    def __init__(self, clip_eps_lo: float, clip_eps_hi: float, beta: float, **kwargs) -> None:
         super().__init__()
         self.clip_eps_lo = clip_eps_lo
         self.clip_eps_hi = clip_eps_hi
@@ -77,7 +77,7 @@ class GSPOLoss(nn.Module):
 
 
 class ReinforceLoss(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, **kwargs) -> None:
         super().__init__()
 
     def forward(self, log_probs: torch.Tensor, experience: Experience, **kwargs) -> torch.Tensor:
@@ -87,7 +87,7 @@ class ReinforceLoss(nn.Module):
 
 
 class CISPOLoss(nn.Module):
-    def __init__(self, clip_eps_lo: float, clip_eps_hi: float, beta: float) -> None:
+    def __init__(self, clip_eps_lo: float, clip_eps_hi: float, beta: float, **kwargs) -> None:
         super().__init__()
         self.clip_eps_lo = clip_eps_lo
         self.clip_eps_hi = clip_eps_hi
@@ -118,6 +118,7 @@ class PPOLoss(nn.Module):
         clip_eps_hi: float,
         clip_eps_val: float,
         vf_coef: float,
+        **kwargs,
     ) -> None:
         super().__init__()
         self.clip_eps_lo = clip_eps_lo
