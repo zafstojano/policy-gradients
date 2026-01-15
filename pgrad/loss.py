@@ -73,19 +73,11 @@ class GSPOLoss(nn.Module):
 
 
 class RLOOLoss(nn.Module):
-    def __init__(self, beta: float) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.beta = beta
 
     def forward(self, log_probs: torch.Tensor, experience: Experience, **kwargs) -> torch.Tensor:
-        policy_loss = -(log_probs * experience.advantages)
-
-        if self.beta:
-            kl_loss = approx_kl(log_probs, experience.log_probs_ref, experience.action_mask)
-        else:
-            kl_loss = torch.tensor(0.0, device=log_probs.device)
-
-        loss = policy_loss + self.beta * kl_loss
+        loss = -(log_probs * experience.advantages)
         loss = masked_mean(loss, mask=experience.action_mask, dim=-1).mean(dim=0)
         return loss
 
@@ -120,14 +112,12 @@ class PPOLoss(nn.Module):
         clip_eps_hi: float,
         clip_eps_val: float,
         vf_coef: float,
-        beta: float,
     ) -> None:
         super().__init__()
         self.clip_eps_lo = clip_eps_lo
         self.clip_eps_hi = clip_eps_hi
         self.clip_eps_val = clip_eps_val
         self.vf_coef = vf_coef
-        self.beta = beta
 
     def forward(self, log_probs: torch.Tensor, experience: Experience, values: torch.Tensor, **kwargs) -> torch.Tensor:
         # Value loss
@@ -145,12 +135,6 @@ class PPOLoss(nn.Module):
         policy_clipped_term = policy_ratio.clamp(1.0 - self.clip_eps_lo, 1.0 + self.clip_eps_hi) * advantages
         policy_loss = -torch.min(policy_unclipped_term, policy_clipped_term)
 
-        # KL loss
-        if self.beta:
-            kl_loss = approx_kl(log_probs, experience.log_probs_ref, experience.action_mask)
-        else:
-            kl_loss = torch.tensor(0.0, device=log_probs.device)
-
-        loss = policy_loss + self.vf_coef * val_loss + self.beta * kl_loss
+        loss = policy_loss + self.vf_coef * val_loss
         loss = masked_mean(loss, mask=experience.action_mask, dim=-1).mean(dim=0)
         return loss

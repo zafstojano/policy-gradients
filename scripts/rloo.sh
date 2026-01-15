@@ -1,5 +1,5 @@
 #!/bin/bash
 
 uv run python -m pgrad.train \
-    --loss_type rloo \
+    --loss rloo \
     --wandb_run_name "rloo_spell_backwards"

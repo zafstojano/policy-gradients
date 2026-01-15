@@ -10,12 +10,10 @@ class Experience:
     sequence_ids: torch.Tensor
     attention_mask: torch.Tensor
     action_mask: torch.Tensor
-    returns: torch.Tensor
     advantages: torch.Tensor | None = None
     log_probs_old: torch.Tensor | None = None
     log_probs_ref: torch.Tensor | None = None
     values_old: torch.Tensor | None = None
-    kl_div: torch.Tensor | None = None
 
     def to(self, device: torch.device) -> Self:
         field_names = [f.name for f in fields(self)]

@@ -1,4 +1,5 @@
 import argparse
+import os
 import random
 import re
 
@@ -24,16 +25,59 @@ from .buffer import Experience, ReplayBuffer, join_experiences_batch
 from .loss import CISPOLoss, GRPOLoss, GSPOLoss, PPOLoss, RLOOLoss, approx_kl, masked_mean
 
 
-def load_model(model_name: str, trust_remote_code: bool = False, device_map=None):
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=trust_remote_code)
+def seed_everything(seed: int) -> None:
+    random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # For multi-GPU
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
+def load_model(model_name: str, device_map=None):
+    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=False)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         device_map=device_map,
-        trust_remote_code=trust_remote_code,
+        trust_remote_code=False,
         attn_implementation="flash_attention_2",
         dtype=torch.bfloat16,
     )
     return model, tokenizer
+
+
+def get_ref_model(model_name: str, beta: float, device_map=None):
+    if not beta:
+        return None
+    ref_model, _ = load_model(model_name=model_name, device_map=device_map)
+    ref_model.eval()
+    return ref_model
+
+
+def get_val_model(model_name: str, loss: str, device_map=None):
+    if loss not in ["ppo"]:
+        return None
+    val_model, _ = load_model(model_name=model_name, device_map=device_map)
+    val_model.lm_head = nn.Linear(
+        val_model.lm_head.in_features, 1, bias=False, device=val_model.device, dtype=torch.bfloat16
+    )
+    return val_model
+
+
+def get_loss_objective(loss: str, **kwargs) -> nn.Module:
+    if loss in ["grpo", "drgrpo"]:
+        return GRPOLoss(**kwargs)
+    elif loss == "gspo":
+        return GSPOLoss(**kwargs)
+    elif loss == "rloo":
+        return RLOOLoss(**kwargs)
+    elif loss == "cispo":
+        return CISPOLoss(**kwargs)
+    elif loss == "ppo":
+        return PPOLoss(**kwargs)
+    raise ValueError(f"Unsupported loss type: {loss}")
 
 
 def _accuracy_reward(dataset: ProceduralDataset, completions: str, entry: dict) -> float:
@@ -69,50 +113,16 @@ def compute_rewards(
     return combined_rewards
 
 
-def compute_standardized_advantages(rewards: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-    return (rewards - rewards.mean(dim=0, keepdim=True)) / (rewards.std(dim=0, keepdim=True) + eps)
-
-
-def compute_nonstandardized_advantages(rewards: torch.Tensor) -> torch.Tensor:
-    return rewards - rewards.mean(dim=0, keepdim=True)
-
-
-def compute_loo_advantages(rewards: torch.Tensor) -> torch.Tensor:
-    K = rewards.shape[0]
-    return (K / (K - 1)) * (rewards - rewards.mean(dim=0, keepdim=True))
-
-
-def compute_advantages(rewards: torch.Tensor, loss_type: str) -> torch.Tensor | None:
-    if loss_type in ["grpo", "gspo"]:
-        return compute_standardized_advantages(rewards)
-    elif loss_type in ["drgrpo"]:
-        return compute_nonstandardized_advantages(rewards)
-    elif loss_type in ["rloo", "cispo"]:
-        return compute_loo_advantages(rewards)
-    else:
-        return None
-
-
-def compute_kl_div(
-    log_probs: torch.Tensor,
-    log_probs_ref: torch.Tensor,
-    action_mask: torch.Tensor,
-    beta: float,
-    loss_type: str,
-) -> torch.Tensor | None:
-    if beta and loss_type in ["ppo", "rloo"]:
-        return approx_kl(log_probs, log_probs_ref, action_mask)
-    else:
-        return None
-
-
 def compute_returns(
-    action_mask: torch.Tensor,
     rewards: torch.Tensor,
+    action_mask: torch.Tensor,
     gamma: float,
+    loss: str,
 ) -> torch.Tensor:
-    B, S = action_mask.size()
+    if loss not in ["ppo"]:
+        return rewards
 
+    B, S = action_mask.size()
     last_action_indices = action_mask.long().cumsum(dim=-1).argmax(dim=-1, keepdim=True)  # (B, 1)
     indices = torch.arange(S, device=action_mask.device).unsqueeze(0)  # (1, S)
     done = (indices >= last_action_indices).float()  # (B, S)
@@ -129,6 +139,57 @@ def compute_returns(
 
     returns = returns * action_mask
     return returns
+
+def apply_kl(
+    rewards: torch.Tensor,
+    log_probs: torch.Tensor,
+    log_probs_ref: torch.Tensor,
+    action_mask: torch.Tensor,
+    beta: float,
+    loss: str,
+) -> torch.Tensor:
+    if not beta or loss not in ["ppo", "rloo"]:
+        return rewards
+    kl_div = approx_kl(log_probs, log_probs_ref, action_mask)
+    if loss in ["rloo"]:
+        kl_div = masked_mean(kl_div, mask=action_mask, dim=-1, keepdim=True)
+    rewards = rewards - beta * kl_div
+    return rewards
+
+
+def compute_standardized_advantages(rewards: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+    return (rewards - rewards.mean(dim=0, keepdim=True)) / (rewards.std(dim=0, keepdim=True) + eps)
+
+
+def compute_nonstandardized_advantages(rewards: torch.Tensor) -> torch.Tensor:
+    return rewards - rewards.mean(dim=0, keepdim=True)
+
+
+def compute_loo_advantages(rewards: torch.Tensor) -> torch.Tensor:
+    K = rewards.shape[0]
+    return (K / (K - 1)) * (rewards - rewards.mean(dim=0, keepdim=True))
+
+
+def compute_ppo_advantages(rewards: torch.Tensor, values: torch.Tensor, gamma: float, lam: float) -> torch.Tensor: ...
+
+
+def compute_advantages(rewards: torch.Tensor, loss: str) -> torch.Tensor:
+    if loss in ["grpo", "gspo"]:
+        return compute_standardized_advantages(rewards)
+    elif loss in ["drgrpo"]:
+        return compute_nonstandardized_advantages(rewards)
+    elif loss in ["rloo", "cispo"]:
+        return compute_loo_advantages(rewards)
+    elif loss in ["ppo"]:
+        return compute_ppo_advantages(rewards)
+    else:
+        return rewards
+
+
+
+
+
+
 
 
 def compute_log_probs(model, sequence_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
@@ -230,12 +291,8 @@ def progress_bar(console: Console) -> Progress:
 
 
 def main(args):
+    seed_everything(args.seed)
     console = Console()
-
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
 
     cpu_device = torch.device("cpu")
     if torch.cuda.is_available():
@@ -255,51 +312,34 @@ def main(args):
         collate_fn=lambda x: x,
     )
     model, tokenizer = load_model(model_name=args.model_name, device_map=model_device)
-
-    console.print(
-        Panel(
-            f"[bold magenta]Model:[/bold magenta] {model}\n"
-            f"[dim]Parameters:[/dim] {sum(p.numel() for p in model.parameters()):,}\n"
-            f"[dim]Device:[/dim] {model.device}",
-            title="[bold magenta]Configuration[/bold magenta]",
-            border_style="magenta",
-        )
-    )
-
-    if args.beta:
-        ref_model, _ = load_model(model_name=args.model_name, device_map=ref_model_device)
-        ref_model.eval()
-    else:
-        ref_model = None
-    if args.loss_type in ["ppo"]:
-        val_model, _ = load_model(model_name=args.model_name, device_map=val_model_device)
-        val_model.lm_head = nn.Linear(
-            val_model.lm_head.in_features, 1, bias=False, device=val_model.device, dtype=torch.bfloat16
-        )
-    else:
-        val_model = None
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)  # TODO: Add value model parameters to optimizer
-
-    if args.loss_type in ["grpo", "drgrpo"]:
-        objective = GRPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.beta)
-    elif args.loss_type == "gspo":
-        objective = GSPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.beta)
-    elif args.loss_type == "rloo":
-        objective = RLOOLoss(args.beta)
-    elif args.loss_type == "cispo":
-        objective = CISPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.beta)
-    elif args.loss_type == "ppo":
-        objective = PPOLoss(args.clip_eps_lo, args.clip_eps_hi, args.clip_eps_val, args.vf_coef, args.beta)
-    else:
-        raise ValueError(f"Unsupported loss type: {args.loss_type}")
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+    ref_model = get_ref_model(model_name=args.model_name, beta=args.beta, device_map=ref_model_device)
+    val_model = get_val_model(model_name=args.model_name, loss=args.loss, device_map=val_model_device)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)  # TODO: Add value model parameters to optimizer
+    objective = get_loss_objective(
+        loss=args.loss,
+        clip_eps_lo=args.clip_eps_lo,
+        clip_eps_hi=args.clip_eps_hi,
+        clip_eps_val=args.clip_eps_val,
+        vf_coef=args.vf_coef,
+        beta=args.beta,
+    ).to(model.device)
+    replay_buffer = ReplayBuffer()
 
     if args.wandb_project is None:
         wandb.init(mode="disabled")
     else:
         wandb.init(project=args.wandb_project, name=args.wandb_run_name, config=vars(args))
-
-    replay_buffer = ReplayBuffer()
+    console.print(
+        Panel(
+            f"[bold magenta]Model:[/bold magenta] {model}\n"
+            f"[dim]Parameters:[/dim] {sum(p.numel() for p in model.parameters()):,}\n"
+            f"[dim]Device:[/dim] {model.device}",
+            f"[dim]Loss:[/dim] {args.loss}",
+            title="[bold magenta]Configuration[/bold magenta]",
+            border_style="magenta",
+        )
+    )
 
     for step, batch in enumerate(dataloader):
         console.rule(f"[bold cyan]STEP {step + 1}/{len(dataloader)}[/bold cyan]", style="cyan")
@@ -326,29 +366,26 @@ def main(args):
                         top_k=args.top_k,
                         min_p=args.min_p,
                     )
+                    rollout_rewards.append(rewards.cpu())
+                    rollout_completions.append((entry["question"], entry["answer"], completions))
 
-                    advantages = compute_advantages(rewards, args.loss_type)
-                    returns = compute_returns(action_mask, rewards, gamma=args.gamma)
                     log_probs_old = compute_log_probs(model, sequence_ids, attention_mask)
                     log_probs_ref = compute_log_probs(ref_model, sequence_ids, attention_mask)
                     values_old = compute_values(val_model, sequence_ids, attention_mask)
-                    kl_div = compute_kl_div(log_probs_old, log_probs_ref, action_mask, args.beta, args.loss_type)
+                    rewards = compute_returns(rewards, action_mask, args.gamma, args.loss)
+                    rewards = apply_kl(rewards, log_probs_old, log_probs_ref, action_mask, args.beta, args.loss)
+                    advantages = compute_advantages(rewards, args.loss)
 
                     experience = Experience(
                         sequence_ids=sequence_ids,
                         attention_mask=attention_mask,
                         action_mask=action_mask,
-                        returns=returns,
                         advantages=advantages,
                         log_probs_old=log_probs_old,
                         log_probs_ref=log_probs_ref,
                         values_old=values_old,
-                        kl_div=kl_div,
                     ).to(cpu_device)
                     replay_buffer.add(experience)
-
-                    rollout_rewards.append(rewards.cpu())
-                    rollout_completions.append((entry["question"], entry["answer"], completions))
 
                 progress.update(task, advance=1)
 
@@ -455,7 +492,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_device_id", type=int, default=0)
     parser.add_argument("--ref_model_device_id", type=int, default=1)
     parser.add_argument("--val_model_device_id", type=int, default=2)
-    parser.add_argument("--loss_type", type=str, choices=["grpo", "drgrpo", "gspo", "rloo", "cispo", "ppo"])
+    parser.add_argument("--loss", type=str, choices=["grpo", "drgrpo", "gspo", "rloo", "cispo", "ppo"])
     args = parser.parse_args()
 
     main(args)
