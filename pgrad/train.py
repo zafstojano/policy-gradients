@@ -174,11 +174,11 @@ def compute_ppo_advantages(rewards: torch.Tensor, values: torch.Tensor, gamma: f
 
 
 def compute_advantages(rewards: torch.Tensor, loss: str) -> torch.Tensor:
-    if loss in ["grpo", "gspo"]:
+    if loss in ["grpo", "gspo", "cispo"]:
         return compute_standardized_advantages(rewards)
     elif loss in ["drgrpo"]:
         return compute_nonstandardized_advantages(rewards)
-    elif loss in ["rloo", "cispo"]:
+    elif loss in ["rloo"]:
         return compute_loo_advantages(rewards)
     elif loss in ["ppo"]:
         return compute_ppo_advantages(rewards)
