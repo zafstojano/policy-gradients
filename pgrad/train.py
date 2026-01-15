@@ -331,7 +331,7 @@ def main(args):
         Panel(
             f"[bold magenta]Model:[/bold magenta] {model}\n"
             f"[dim]Parameters:[/dim] {sum(p.numel() for p in model.parameters()):,}\n"
-            f"[dim]Device:[/dim] {model.device}",
+            f"[dim]Device:[/dim] {model.device}\n"
             f"[dim]Loss:[/dim] {args.loss}",
             title="[bold magenta]Configuration[/bold magenta]",
             border_style="magenta",
