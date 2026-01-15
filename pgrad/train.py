@@ -147,11 +147,12 @@ def compute_gae(
 ) -> torch.Tensor:
     B, S = action_mask.size()
     last_action_indices = action_mask.long().cumsum(dim=-1).argmax(dim=-1, keepdim=True)  # (B, 1)
+    indices = torch.arange(S, device=action_mask.device).unsqueeze(0)  # (1, S)
+    done = (indices >= last_action_indices).float()  # (B, S)
+
     rewards = torch.zeros_like(action_mask, device=action_mask.device, dtype=torch.float32).scatter_(
         dim=-1, index=last_action_indices, src=rewards
     )  # (B, S)
-    indices = torch.arange(S, device=action_mask.device).unsqueeze(0)  # (1, S)
-    done = (indices >= last_action_indices).float()  # (B, S)
 
     advantages = torch.zeros_like(action_mask, dtype=torch.float32, device=action_mask.device)  # (B, S)
     next_values = torch.zeros(B, device=action_mask.device, dtype=torch.float32)  # (B,)
