@@ -22,7 +22,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 import wandb
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
-from .loss import CISPOLoss, GRPOLoss, GSPOLoss, PPOLoss, RLOOLoss, approx_kl, masked_mean
+from .loss import CISPOLoss, GRPOLoss, GSPOLoss, PPOLoss, ReinforceLoss, approx_kl, masked_mean
 
 
 def seed_everything(seed: int) -> None:
@@ -71,8 +71,8 @@ def get_loss_objective(loss: str, **kwargs) -> nn.Module:
         return GRPOLoss(**kwargs)
     elif loss == "gspo":
         return GSPOLoss(**kwargs)
-    elif loss == "rloo":
-        return RLOOLoss(**kwargs)
+    elif loss in ["rloo", "reinforce"]:
+        return ReinforceLoss(**kwargs)
     elif loss == "cispo":
         return CISPOLoss(**kwargs)
     elif loss == "ppo":
@@ -149,10 +149,10 @@ def apply_kl(
     beta: float,
     loss: str,
 ) -> torch.Tensor:
-    if not beta or loss not in ["ppo", "rloo"]:
+    if not beta or loss not in ["ppo", "rloo", "reinforce"]:
         return rewards
     kl_div = approx_kl(log_probs, log_probs_ref, action_mask)
-    if loss in ["rloo"]:
+    if loss in ["rloo", "reinforce"]:
         kl_div = masked_mean(kl_div, mask=action_mask, dim=-1, keepdim=True)
     rewards = rewards - beta * kl_div
     return rewards
@@ -487,7 +487,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_device_id", type=int, default=0)
     parser.add_argument("--ref_model_device_id", type=int, default=1)
     parser.add_argument("--val_model_device_id", type=int, default=2)
-    parser.add_argument("--loss", type=str, choices=["grpo", "drgrpo", "gspo", "rloo", "cispo", "ppo"])
+    parser.add_argument("--loss", type=str, choices=["grpo", "drgrpo", "gspo", "reinforce", "rloo", "cispo", "ppo"])
     args = parser.parse_args()
 
     main(args)
