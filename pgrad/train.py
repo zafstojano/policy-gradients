@@ -2,6 +2,7 @@ import argparse
 import os
 import random
 import re
+from typing import Any
 
 import numpy as np
 import reasoning_gym as rg
@@ -36,7 +37,7 @@ def seed_everything(seed: int) -> None:
     torch.backends.cudnn.benchmark = False
 
 
-def load_model(model_name: str, device_map=None):
+def load_model(model_name: str, device_map: Any, gradient_checkpointing: bool = True):
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=False)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
@@ -45,21 +46,23 @@ def load_model(model_name: str, device_map=None):
         attn_implementation="flash_attention_2",
         dtype=torch.bfloat16,
     )
+    if gradient_checkpointing:
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     return model, tokenizer
 
 
-def get_ref_model(model_name: str, beta: float, device_map=None):
+def get_ref_model(model_name: str, device_map: Any, beta: float):
     if not beta:
         return None
-    ref_model, _ = load_model(model_name=model_name, device_map=device_map)
+    ref_model, _ = load_model(model_name, device_map, gradient_checkpointing=False)
     ref_model.eval()
     return ref_model
 
 
-def get_val_model(model_name: str, loss: str, device_map=None):
+def get_val_model(model_name: str, device_map: Any, loss: str, gradient_checkpointing: bool = True):
     if loss not in ["ppo"]:
         return None
-    val_model, _ = load_model(model_name=model_name, device_map=device_map)
+    val_model, _ = load_model(model_name, device_map, gradient_checkpointing)
     val_model.lm_head = nn.Linear(
         val_model.lm_head.in_features, 1, bias=False, device=val_model.device, dtype=torch.bfloat16
     )
@@ -308,11 +311,9 @@ def main(args):
         drop_last=True,
         collate_fn=lambda x: x,
     )
-    model, tokenizer = load_model(model_name=args.model_name, device_map=model_device)
-    model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
-    ref_model = get_ref_model(model_name=args.model_name, beta=args.beta, device_map=ref_model_device)
-    val_model = get_val_model(model_name=args.model_name, loss=args.loss, device_map=val_model_device)
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)  # TODO: Add value model parameters to optimizer
+    model, tokenizer = load_model(args.model_name, model_device, gradient_checkpointing=True)
+    ref_model = get_ref_model(args.model_name, ref_model_device, args.beta)
+    val_model = get_val_model(args.model_name, val_model_device, args.loss, gradient_checkpointing=True)
     objective = get_loss_objective(
         loss=args.loss,
         clip_eps_lo=args.clip_eps_lo,
@@ -321,6 +322,8 @@ def main(args):
         vf_coef=args.vf_coef,
         beta=args.beta,
     ).to(model.device)
+    params = list(model.parameters()) + (list(val_model.parameters()) if val_model else [])
+    optimizer = optim.Adam(params, lr=args.lr)
     replay_buffer = ReplayBuffer()
 
     if args.wandb_project is None:
@@ -446,7 +449,7 @@ def main(args):
 
                 # Update weights every batch_acc steps
                 if (batch_idx + 1) % args.batch_acc == 0 or (batch_idx + 1) == len(experience_sampler):
-                    grad_norm = clip_grad_norm_(model.parameters(), max_norm=args.max_norm)
+                    grad_norm = clip_grad_norm_(params, max_norm=args.max_norm)
                     optimizer.step()
                     optimizer.zero_grad(set_to_none=True)
                     torch.cuda.empty_cache()
