@@ -21,7 +21,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 import wandb
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
-from .loss import CISPOLoss, GRPOLoss, GSPOLoss, PPOLoss, RLOOLoss
+from .loss import CISPOLoss, GRPOLoss, GSPOLoss, PPOLoss, RLOOLoss, approx_kl, masked_mean
 
 
 def load_model(model_name: str, trust_remote_code: bool = False, device_map=None):
@@ -69,7 +69,7 @@ def compute_rewards(
     return combined_rewards
 
 
-def compute_advantages(rewards: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+def compute_standardized_advantages(rewards: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     return (rewards - rewards.mean(dim=0, keepdim=True)) / (rewards.std(dim=0, keepdim=True) + eps)
 
 
@@ -80,6 +80,30 @@ def compute_nonstandardized_advantages(rewards: torch.Tensor) -> torch.Tensor:
 def compute_loo_advantages(rewards: torch.Tensor) -> torch.Tensor:
     K = rewards.shape[0]
     return (K / (K - 1)) * (rewards - rewards.mean(dim=0, keepdim=True))
+
+
+def compute_advantages(rewards: torch.Tensor, loss_type: str) -> torch.Tensor | None:
+    if loss_type in ["grpo", "gspo"]:
+        return compute_standardized_advantages(rewards)
+    elif loss_type in ["drgrpo"]:
+        return compute_nonstandardized_advantages(rewards)
+    elif loss_type in ["rloo", "cispo"]:
+        return compute_loo_advantages(rewards)
+    else:
+        return None
+
+
+def compute_kl_div(
+    log_probs: torch.Tensor,
+    log_probs_ref: torch.Tensor,
+    action_mask: torch.Tensor,
+    beta: float,
+    loss_type: str,
+) -> torch.Tensor | None:
+    if beta and loss_type in ["ppo", "rloo"]:
+        return approx_kl(log_probs, log_probs_ref, action_mask)
+    else:
+        return None
 
 
 def compute_returns(
@@ -303,19 +327,12 @@ def main(args):
                         min_p=args.min_p,
                     )
 
-                    if args.loss_type in ["grpo", "gspo"]:
-                        advantages = compute_advantages(rewards)
-                    elif args.loss_type in ["drgrpo"]:
-                        advantages = compute_nonstandardized_advantages(rewards)
-                    elif args.loss_type in ["rloo", "cispo"]:
-                        advantages = compute_loo_advantages(rewards)
-                    else:
-                        advantages = None
-
+                    advantages = compute_advantages(rewards, args.loss_type)
                     returns = compute_returns(action_mask, rewards, gamma=args.gamma)
                     log_probs_old = compute_log_probs(model, sequence_ids, attention_mask)
                     log_probs_ref = compute_log_probs(ref_model, sequence_ids, attention_mask)
                     values_old = compute_values(val_model, sequence_ids, attention_mask)
+                    kl_div = compute_kl_div(log_probs_old, log_probs_ref, action_mask, args.beta, args.loss_type)
 
                     experience = Experience(
                         sequence_ids=sequence_ids,
@@ -326,6 +343,7 @@ def main(args):
                         log_probs_old=log_probs_old,
                         log_probs_ref=log_probs_ref,
                         values_old=values_old,
+                        kl_div=kl_div,
                     ).to(cpu_device)
                     replay_buffer.add(experience)
 
