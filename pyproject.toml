@@ -1,5 +1,5 @@
 [project]
-name = "micro-pgrad"
+name = "policy-grads"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -23,7 +23,7 @@ dev = [
 ]
 
 [project.scripts]
-train = "pgrad.train:main"
+train = "policy_grads.train:main"
 
 [tool.ruff]
 target-version = "py312"

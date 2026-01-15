@@ -31,5 +31,5 @@ seed: 42
 model_device_id: 0
 ref_model_device_id: 1
 val_model_device_id: 2
-wandb_project: micro-pgrad
+wandb_project: policy-grads
 wandb_run_name: reinforce_spell_backwards
