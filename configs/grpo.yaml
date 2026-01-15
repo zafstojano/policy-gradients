@@ -14,9 +14,6 @@ clip_eps_hi: 0.2
 clip_eps_val: 0.2
 beta: 0.0
 lr: 5e-6
-gamma: 0.99
-lam: 0.95
-vf_coef: 0.1
 temperature: 0.6
 top_p: 0.95
 top_k: 20
@@ -30,6 +27,5 @@ max_norm: 1.0
 seed: 42
 model_device_id: 0
 ref_model_device_id: 1
-val_model_device_id: 2
 wandb_project: policy-grads
 wandb_run_name: grpo_spell_backwards
