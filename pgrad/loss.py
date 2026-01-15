@@ -32,15 +32,17 @@ class GRPOLoss(nn.Module):
         self.beta = beta
 
     def forward(self, log_probs: torch.Tensor, experience: Experience, **kwargs) -> torch.Tensor:
+        # Policy loss
         ratio = (log_probs - experience.log_probs_old).exp()
         unclipped_term = ratio * experience.advantages
-        clipped_term = ratio.clamp(1.0 - self.clip_eps_lo, 1.0 + self.clip_eps_hi) * experience.advantages
+        clipped_term = ratio.clamp(1 - self.clip_eps_lo, 1 + self.clip_eps_hi) * experience.advantages
         policy_loss = -torch.min(unclipped_term, clipped_term)
 
+        # KL penalty
         if self.beta:
             kl_loss = approx_kl(log_probs, experience.log_probs_ref, experience.action_mask)
         else:
-            kl_loss = torch.tensor(0.0, device=log_probs.device)
+            kl_loss = torch.tensor(0.0, device=log_probs.device, dtype=torch.float32)
 
         loss = policy_loss + self.beta * kl_loss
         loss = masked_mean(loss, mask=experience.action_mask, dim=-1).mean(dim=0)
@@ -55,17 +57,19 @@ class GSPOLoss(nn.Module):
         self.beta = beta
 
     def forward(self, log_probs: torch.Tensor, experience: Experience, **kwargs) -> torch.Tensor:
+        # Policy loss
         seq_logprobs = masked_mean(
             log_probs - experience.log_probs_old, mask=experience.action_mask, dim=-1, keepdim=True
         ).exp()
         unclipped_term = seq_logprobs * experience.advantages
-        clipped_term = seq_logprobs.clamp(1.0 - self.clip_eps_lo, 1.0 + self.clip_eps_hi) * experience.advantages
+        clipped_term = seq_logprobs.clamp(1 - self.clip_eps_lo, 1 + self.clip_eps_hi) * experience.advantages
         policy_loss = -torch.min(unclipped_term, clipped_term)
 
+        # KL penalty
         if self.beta:
             kl_loss = approx_kl(log_probs, experience.log_probs_ref, experience.action_mask)
         else:
-            kl_loss = torch.tensor(0.0, device=log_probs.device)
+            kl_loss = torch.tensor(0.0, device=log_probs.device, dtype=torch.float32)
 
         loss = policy_loss + self.beta * kl_loss
         loss = masked_mean(loss, mask=experience.action_mask, dim=-1).mean(dim=0)
@@ -90,15 +94,17 @@ class CISPOLoss(nn.Module):
         self.beta = beta
 
     def forward(self, log_probs: torch.Tensor, experience: Experience, **kwargs) -> torch.Tensor:
+        # Policy loss
         with torch.no_grad():  # stop gradient flow
             ratio = (log_probs - experience.log_probs_old).exp()
-            clipped_ratio = ratio.clamp(1.0 - self.clip_eps_lo, 1.0 + self.clip_eps_hi)
+            clipped_ratio = ratio.clamp(1 - self.clip_eps_lo, 1 + self.clip_eps_hi)
         policy_loss = -clipped_ratio * experience.advantages * log_probs
 
+        # KL penalty
         if self.beta:
             kl_loss = approx_kl(log_probs, experience.log_probs_ref, experience.action_mask)
         else:
-            kl_loss = torch.tensor(0.0, device=log_probs.device)
+            kl_loss = torch.tensor(0.0, device=log_probs.device, dtype=torch.float32)
 
         loss = policy_loss + self.beta * kl_loss
         loss = masked_mean(loss, mask=experience.action_mask, dim=-1).mean(dim=0)
@@ -121,18 +127,18 @@ class PPOLoss(nn.Module):
 
     def forward(self, log_probs: torch.Tensor, experience: Experience, values: torch.Tensor, **kwargs) -> torch.Tensor:
         # Value loss
+        returns = experience.advantages + experience.values_old  # A_t = G_t - V(s_t)  =>  G_t = A_t + V(s_t)
         values_clipped = torch.clamp(
             values, experience.values_old - self.clip_eps_val, experience.values_old + self.clip_eps_val
         )
-        val_unclipped_term = 0.5 * (experience.returns - values) ** 2
-        val_clipped_term = 0.5 * (experience.returns - values_clipped) ** 2
+        val_unclipped_term = 0.5 * (returns - values) ** 2
+        val_clipped_term = 0.5 * (returns - values_clipped) ** 2
         val_loss = torch.max(val_unclipped_term, val_clipped_term)
 
         # Policy loss
-        advantages = experience.returns - values.detach()
         policy_ratio = (log_probs - experience.log_probs_old).exp()
-        policy_unclipped_term = policy_ratio * advantages
-        policy_clipped_term = policy_ratio.clamp(1.0 - self.clip_eps_lo, 1.0 + self.clip_eps_hi) * advantages
+        policy_unclipped_term = policy_ratio * experience.advantages
+        policy_clipped_term = policy_ratio.clamp(1 - self.clip_eps_lo, 1 + self.clip_eps_hi) * experience.advantages
         policy_loss = -torch.min(policy_unclipped_term, policy_clipped_term)
 
         loss = policy_loss + self.vf_coef * val_loss

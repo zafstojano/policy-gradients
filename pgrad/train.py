@@ -31,7 +31,7 @@ def seed_everything(seed: int) -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)  # For multi-GPU
+    torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
@@ -113,35 +113,7 @@ def compute_rewards(
     return combined_rewards
 
 
-def compute_returns(
-    rewards: torch.Tensor,
-    action_mask: torch.Tensor,
-    gamma: float,
-    loss: str,
-) -> torch.Tensor:
-    if loss not in ["ppo"]:
-        return rewards
-
-    B, S = action_mask.size()
-    last_action_indices = action_mask.long().cumsum(dim=-1).argmax(dim=-1, keepdim=True)  # (B, 1)
-    indices = torch.arange(S, device=action_mask.device).unsqueeze(0)  # (1, S)
-    done = (indices >= last_action_indices).float()  # (B, S)
-
-    rewards = torch.zeros_like(action_mask, device=action_mask.device, dtype=torch.float32).scatter_(
-        dim=-1, index=last_action_indices, src=rewards
-    )  # (B, S)
-    returns = torch.zeros_like(action_mask, dtype=torch.float32, device=action_mask.device)  # (B, S)
-    running = torch.zeros(B, device=action_mask.device, dtype=torch.float32)  # (B,)
-
-    for t in reversed(range(S)):
-        running = rewards[:, t] + gamma * (1.0 - done[:, t]) * running
-        returns[:, t] = running
-
-    returns = returns * action_mask
-    return returns
-
-
-def apply_kl(
+def apply_reward_kl(
     rewards: torch.Tensor,
     log_probs: torch.Tensor,
     log_probs_ref: torch.Tensor,
@@ -152,8 +124,7 @@ def apply_kl(
     if not beta or loss not in ["ppo", "rloo", "reinforce"]:
         return rewards
     kl_div = approx_kl(log_probs, log_probs_ref, action_mask)
-    if loss in ["rloo", "reinforce"]:
-        kl_div = masked_mean(kl_div, mask=action_mask, dim=-1, keepdim=True)
+    kl_div = masked_mean(kl_div, mask=action_mask, dim=-1, keepdim=True)
     rewards = rewards - beta * kl_div
     return rewards
 
@@ -171,10 +142,40 @@ def compute_loo_advantages(rewards: torch.Tensor) -> torch.Tensor:
     return (K / (K - 1)) * (rewards - rewards.mean(dim=0, keepdim=True))
 
 
-def compute_ppo_advantages(rewards: torch.Tensor, values: torch.Tensor, gamma: float, lam: float) -> torch.Tensor: ...
+def compute_gae(
+    rewards: torch.Tensor, action_mask: torch.Tensor, values: torch.Tensor, gamma: float, lam: float
+) -> torch.Tensor:
+    B, S = action_mask.size()
+    last_action_indices = action_mask.long().cumsum(dim=-1).argmax(dim=-1, keepdim=True)  # (B, 1)
+    rewards = torch.zeros_like(action_mask, device=action_mask.device, dtype=torch.float32).scatter_(
+        dim=-1, index=last_action_indices, src=rewards
+    )  # (B, S)
+    indices = torch.arange(S, device=action_mask.device).unsqueeze(0)  # (1, S)
+    done = (indices >= last_action_indices).float()  # (B, S)
+
+    advantages = torch.zeros_like(action_mask, dtype=torch.float32, device=action_mask.device)  # (B, S)
+    next_values = torch.zeros(B, device=action_mask.device, dtype=torch.float32)  # (B,)
+    running = torch.zeros(B, device=action_mask.device, dtype=torch.float32)  # (B,)
+
+    for t in reversed(range(S)):
+        not_done = 1.0 - done[:, t]  # prevent spilling over at episode end
+        delta = rewards[:, t] + not_done * gamma * next_values - values[:, t]
+        running = delta + not_done * gamma * lam * running
+        advantages[:, t] = running
+        next_values = values[:, t]
+
+    advantages = advantages * action_mask
+    return advantages
 
 
-def compute_advantages(rewards: torch.Tensor, loss: str) -> torch.Tensor:
+def compute_advantages(
+    rewards: torch.Tensor,
+    loss: str,
+    action_mask: torch.Tensor | None = None,
+    values: torch.Tensor | None = None,
+    gamma: float | None = None,
+    lam: float | None = None,
+) -> torch.Tensor:
     if loss in ["grpo", "gspo", "cispo"]:
         return compute_standardized_advantages(rewards)
     elif loss in ["drgrpo"]:
@@ -182,7 +183,7 @@ def compute_advantages(rewards: torch.Tensor, loss: str) -> torch.Tensor:
     elif loss in ["rloo"]:
         return compute_loo_advantages(rewards)
     elif loss in ["ppo"]:
-        return compute_ppo_advantages(rewards)
+        return compute_gae(rewards, action_mask, values, gamma, lam)
     else:
         return rewards
 
@@ -367,9 +368,8 @@ def main(args):
                     log_probs_old = compute_log_probs(model, sequence_ids, attention_mask)
                     log_probs_ref = compute_log_probs(ref_model, sequence_ids, attention_mask)
                     values_old = compute_values(val_model, sequence_ids, attention_mask)
-                    rewards = compute_returns(rewards, action_mask, args.gamma, args.loss)
-                    rewards = apply_kl(rewards, log_probs_old, log_probs_ref, action_mask, args.beta, args.loss)
-                    advantages = compute_advantages(rewards, args.loss)
+                    rewards = apply_reward_kl(rewards, log_probs_old, log_probs_ref, action_mask, args.beta, args.loss)
+                    advantages = compute_advantages(rewards, args.loss, action_mask, values_old, args.gamma, args.lam)
 
                     experience = Experience(
                         sequence_ids=sequence_ids,
@@ -475,6 +475,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--lr", type=float, default=5e-6)
     parser.add_argument("--gamma", type=float, default=0.99)
+    parser.add_argument("--lam", type=float, default=0.95)
     parser.add_argument("--vf_coef", type=float, default=0.1)
     parser.add_argument("--temperature", type=float, default=0.6)
     parser.add_argument("--top_p", type=float, default=0.95)
