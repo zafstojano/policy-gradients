@@ -335,6 +335,10 @@ def main(cfg: Config):
         with progress_bar(console) as progress:
             task = progress.add_task("Generating rollouts", total=len(batch))
 
+            effective_rollout_batch_size = cfg.num_rollouts if cfg.num_rollouts > 1 else cfg.prompts_per_step
+            # TODO: REPEAT EACH PROMPT cfg.num_rollouts TIMES AND THEN SPLIT INTO BATCHES OF SIZE effective_rollout_batch_size
+            #       INSTEAD OF ROLLING OUT ONE PROMPT AT A TIME.
+
             for entry in batch:
                 with torch.no_grad():
                     sequence_ids, action_mask, attention_mask, rewards, completions = rollout(

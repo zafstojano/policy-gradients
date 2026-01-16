@@ -32,7 +32,7 @@ class Config(BaseModel):
     top_k: int = 20
     min_p: float = 0.0
     max_new_tokens: int = 512
-    prompts_per_step: int = 5
+    prompts_per_step: int = 4
     num_rollouts: int = 8
     train_batch_size: int = 2
     batch_acc: int = 4
