@@ -955,7 +955,7 @@ wheels = [
 ]
 
 [[package]]
-name = "policy-grads"
+name = "policy-gradients"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
