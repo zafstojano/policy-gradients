@@ -1,7 +1,7 @@
 <p align="center">
   <img src="./assets/logo.svg" alt="Policy Gradients logo">
 </p>
-<p align="center">Policy gradients you can easily understand (GRPO, PPO, REINFORCE)</p>
+<p align="center">Minimal hackable implementations of GRPO, PPO, and REINFORCE</p>
 
 <p align="center">
   <img src="./assets/training_sample.png" alt="Training Sample" width="85%">
