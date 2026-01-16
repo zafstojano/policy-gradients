@@ -45,7 +45,7 @@ uv pip install https://github.com/mjun0812/flash-attention-prebuild-wheels/relea
 
 ## Development
 
-To run the main training script, say with grpo:
+To run the main training script, say with GRPO:
 ```
 uv run python -m policy_grads.train --config configs/grpo.yaml
 ```
