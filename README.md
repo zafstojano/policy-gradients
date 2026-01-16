@@ -8,7 +8,8 @@ A minimal hackable implementation of policy gradient methods (e.g. GRPO, PPO) fo
 
 The goal of this repo is to provide a simple implementation of policy gradient methods that is easy to understand and modify, and can run on as few as **1 GPU**.
 
-For a comprehensive explanation of the methods implemented here, please refer to the [RLHF Book](https://rlhfbook.com), especially the chapter on [Policy Gradients](https://rlhfbook.com/c/11-policy-gradients)
+>[!TIP]
+> For a comprehensive explanation of the methods implemented here, please refer to the [RLHF Book](https://rlhfbook.com), especially the chapter on [Policy Gradients](https://rlhfbook.com/c/11-policy-gradients).
 
 The structure of the repo is extremely simple:
 ```
