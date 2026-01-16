@@ -8,7 +8,7 @@ A minimal hackable implementation of policy gradients for training large languag
 
 
 ## Data
-This project is using Reasoning Gym for generating procedural datasets. In the yaml file simply specify which datasets you want to use, along with their configurations. For example:
+This project is using [Reasoning Gym](https://github.com/open-thought/reasoning-gym) for generating procedural datasets. In the yaml file simply specify which datasets you want to use, along with their configurations. For example:
 
 ```yaml
 data:
@@ -23,6 +23,8 @@ data:
     # - name: leg_counting
     #   weight: 1
 ```
+
+See the full gallery of available datasets [here](https://github.com/open-thought/reasoning-gym/blob/main/GALLERY.md).
 
 ## Installation
 
