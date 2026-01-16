@@ -50,7 +50,7 @@ To run the main training script, say with GRPO:
 uv run python -m policy_grads.train --config configs/grpo.yaml
 ```
 
-To run the linter
+To run the linter and automatically fix issues:
 ```
 uv run pre-commit run --all-files
 ```
