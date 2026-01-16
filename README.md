@@ -1,14 +1,13 @@
-
-
-
 # Policy Grads
 
 A minimal hackable implementation of policy gradients for training large language models with RL.
 
+For a comprehensive explanation of the methods implemented here, please refer to the [RLHF Book](https://rlhfbook.com).
+
 
 ## Get started
 
-For dependencies, this project uses [uv](https://docs.astral.sh/uv/). Once installed, you can sync the repository and install dependencies with:
+For dependencies, this project uses [uv](https://docs.astral.sh/uv/). Once installed, you can sync the repository with:
 
 ```
 uv sync
