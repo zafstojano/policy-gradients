@@ -2,6 +2,7 @@ import argparse
 import os
 import random
 import re
+from itertools import batched
 from typing import Any
 
 import numpy as np
@@ -83,12 +84,12 @@ def get_loss_objective(loss: str, **kwargs) -> nn.Module:
     raise ValueError(f"Unsupported loss type: {loss}")
 
 
-def _accuracy_reward(dataset: ProceduralDataset, completions: str, entry: dict) -> float:
-    def score_answer(completion: str) -> float:
+def _accuracy_reward(dataset: ProceduralDataset, completions: str, entries: list[dict]) -> float:
+    def score_answer(completion: str, entry: dict) -> float:
         answer = extract_answer(completion)
         return dataset.score_answer(answer, entry)
 
-    return [score_answer(c) for c in completions]
+    return [score_answer(c, e) for c, e in zip(completions, entries, strict=True)]
 
 
 def _format_reward(completions: list[str], **kwargs) -> list[float]:
@@ -108,9 +109,9 @@ def _format_reward(completions: list[str], **kwargs) -> list[float]:
 
 
 def compute_rewards(
-    dataset: ProceduralDataset, completions: list[str], entry: dict, format_weight: float = 0.5
+    dataset: ProceduralDataset, completions: list[str], entries: list[dict], format_weight: float = 0.5
 ) -> list[float]:
-    accuracy_rewards = _accuracy_reward(dataset, completions, entry)
+    accuracy_rewards = _accuracy_reward(dataset, completions, entries)
     format_rewards = _format_reward(completions)
     combined_rewards = [acc + format_weight * fmt for acc, fmt in zip(accuracy_rewards, format_rewards, strict=True)]
     return combined_rewards
@@ -215,10 +216,9 @@ def compute_values(model, sequence_ids: torch.Tensor, attention_mask: torch.Tens
 
 def rollout(
     model,
+    entries: list[dict],
     dataset: ProceduralDataset,
     tokenizer: AutoTokenizer,
-    entry: dict,
-    num_rollouts: int,
     max_length: int,
     temperature: float,
     top_p: float,
@@ -226,25 +226,26 @@ def rollout(
     min_p: float,
 ):
     # 1. Format prompts
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPTS["DeepSeekZero"]},
-        {"role": "user", "content": entry["question"]},
+    message_templates = [
+        tokenizer.apply_chat_template(
+            [
+                {"role": "system", "content": SYSTEM_PROMPTS["DeepSeekZero"]},
+                {"role": "user", "content": entry["question"]},
+            ],
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=True,
+        )
+        for entry in entries
     ]
-    messages_template = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True,
-        enable_thinking=True,
-    )
+
     model_inputs = tokenizer(
-        messages_template,
+        message_templates,
         return_tensors="pt",
         padding=True,
         padding_side="left",
         return_attention_mask=True,
     ).to(model.device)
-    model_inputs["input_ids"] = model_inputs["input_ids"].repeat(num_rollouts, 1)
-    model_inputs["attention_mask"] = model_inputs["attention_mask"].repeat(num_rollouts, 1)
 
     # 2. Generate responses
     pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
@@ -257,6 +258,7 @@ def rollout(
         max_length=max_length,
         pad_token_id=pad_token_id,
     )
+
     sequence_ids = model.generate(**model_inputs, generation_config=generation_config)
     completion_ids = sequence_ids[:, model_inputs["input_ids"].shape[1] :]
     completions = tokenizer.batch_decode(completion_ids, skip_special_tokens=True)
@@ -268,7 +270,7 @@ def rollout(
     action_mask = action_mask[:, 1:]
 
     # 4. Compute rewards
-    rewards = compute_rewards(dataset, completions, entry)
+    rewards = compute_rewards(dataset, completions, entries)
     rewards = torch.tensor(rewards, dtype=torch.float32, device=model.device).unsqueeze(-1)
 
     # 5. Compute attention mask
@@ -317,6 +319,7 @@ def main(cfg: Config):
     params = list(model.parameters()) + (list(val_model.parameters()) if val_model else [])
     optimizer = optim.Adam(params, lr=cfg.lr)
     replay_buffer = ReplayBuffer()
+    effective_inference_batch_size = cfg.num_rollouts if cfg.num_rollouts > 1 else cfg.prompts_per_step
 
     if cfg.wandb_project is None:
         wandb.init(mode="disabled")
@@ -333,20 +336,16 @@ def main(cfg: Config):
         rollout_rewards, rollout_completions = [], []
 
         with progress_bar(console) as progress:
-            task = progress.add_task("Generating rollouts", total=len(batch))
+            entries = [entry for entry in batch for _ in range(cfg.num_rollouts)]
+            task = progress.add_task("Generating rollouts", total=len(entries) // effective_inference_batch_size)
 
-            effective_rollout_batch_size = cfg.num_rollouts if cfg.num_rollouts > 1 else cfg.prompts_per_step
-            # TODO: REPEAT EACH PROMPT cfg.num_rollouts TIMES AND THEN SPLIT INTO BATCHES OF SIZE effective_rollout_batch_size
-            #       INSTEAD OF ROLLING OUT ONE PROMPT AT A TIME.
-
-            for entry in batch:
+            for batch in batched(entries, effective_inference_batch_size):
                 with torch.no_grad():
                     sequence_ids, action_mask, attention_mask, rewards, completions = rollout(
                         model=model,
+                        entries=batch,
                         dataset=dataset,
                         tokenizer=tokenizer,
-                        entry=entry,
-                        num_rollouts=cfg.num_rollouts,
                         max_length=cfg.max_new_tokens,
                         temperature=cfg.temperature,
                         top_p=cfg.top_p,
@@ -354,7 +353,12 @@ def main(cfg: Config):
                         min_p=cfg.min_p,
                     )
                     rollout_rewards.append(rewards.cpu())
-                    rollout_completions.append((entry["question"], entry["answer"], completions))
+                    rollout_completions.extend(
+                        [
+                            (entry["question"], entry["answer"], completion)
+                            for entry, completion in zip(batch, completions, strict=True)
+                        ]
+                    )
 
                     log_probs_old = compute_log_probs(model, sequence_ids, attention_mask)
                     log_probs_ref = compute_log_probs(ref_model, sequence_ids, attention_mask)

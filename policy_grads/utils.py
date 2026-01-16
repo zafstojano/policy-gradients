@@ -1,3 +1,5 @@
+import random
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
@@ -36,8 +38,7 @@ def print_model_info(console: Console, model) -> None:
 
 def print_rollout_sample(console: Console, reward: float, rollout_completions: list) -> None:
     """Print a sample from the rollouts with the average reward."""
-    sample_q, sample_a, sample_completions = rollout_completions[0]
-    sample_completion = sample_completions[0]
+    sample_q, sample_a, sample_completion = random.choice(rollout_completions)
     console.print(
         Panel(
             f"[bold green]Average Reward:[/bold green] {reward:.4f}",

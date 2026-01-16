@@ -13,11 +13,11 @@
 
 The goal of this repo is to provide a simple implementation of policy gradient methods that is easy to understand and modify, and can run on as few as **1 GPU**.
 
-Often times, production-ready libraries are hard to understand, as they use vLLM for inference, FSDP for policy training, and Ray for communicating between the distributed processes. 
+Often times, production-ready libraries are hard to understand, as they use vLLM for inference, FSDP for policy training, and Ray for communicating between the distributed processes.
 
-Instead, this repo provides an educational implementation that has a single entrypoint (`train.py`), which can be run with a debugger, and inspect all states at any time. 
+Instead, this repo provides an educational implementation that has a single entrypoint (`train.py`), which can be run with a debugger, and inspect all states at any time.
 
-The focus is not an efficient distributed implementation, rather one that can be run on as few as a single GPU in order to understand what is going on under the hood. For example, you can train `Qwen/Qwen3-1.7B` with GRPO, without KL divergence (due to needing another copy of the reference model) using a single 24GB NVIDIA A10G. 
+The focus is not an efficient distributed implementation, rather one that can be run on as few as a single GPU in order to understand what is going on under the hood. For example, you can train `Qwen/Qwen3-1.7B` with GRPO, without KL divergence (due to needing another copy of the reference model) using a single 24GB NVIDIA A10G.
 
 >[!TIP]
 > For a comprehensive explanation of the methods implemented here, please refer to the [RLHF Book](https://rlhfbook.com), especially the chapter on [Policy Gradients](https://rlhfbook.com/c/11-policy-gradients).

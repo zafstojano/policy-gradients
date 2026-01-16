@@ -19,7 +19,7 @@ top_p: 0.95
 top_k: 20
 min_p: 0.0
 max_new_tokens: 512
-prompts_per_step: 5
+prompts_per_step: 4
 num_rollouts: 8
 train_batch_size: 2
 batch_acc: 4
