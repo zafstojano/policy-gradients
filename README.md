@@ -27,7 +27,7 @@ policy_grads
 ├── loss.py    # Policy gradient objectives (GRPO, PPO, REINFORCE, ...)
 ├── buffer.py  # Replay buffer for episodic learning
 ├── config.py  # Configuration of hyperparameters (learning rate, gamma, ...)
-└──  utils.py   # Utils for pretty prints
+└── utils.py   # Utils for pretty prints
 ```
 
 Each method has its own YAML configuration file (parsed by `config.py`):
