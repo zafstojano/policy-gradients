@@ -1,10 +1,15 @@
-# Policy Gradients
+<p align="center">
+  <img src="./assets/logo.png" alt="Policy Gradients logo">
+</p>
+<p align="center">A minimal hackable implementation of policy gradient methods (GRPO, PPO, REINFORCE) for training LLMs with RL.</p>
 
-A minimal hackable implementation of policy gradient methods (e.g. GRPO, PPO) for training LLMs with RL.
+<p align="center">
+  <img src="./assets/training_sample.png" alt="Training Sample">
+</p>
 
-![Training Sample](./assets/training_sample.png)
+---
 
-## About
+## Overview
 
 The goal of this repo is to provide a simple implementation of policy gradient methods that is easy to understand and modify, and can run on as few as **1 GPU**.
 
