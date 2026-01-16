@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/logo.png" alt="Policy Gradients logo">
+  <img src="./assets/logo.svg" alt="Policy Gradients logo">
 </p>
 <p align="center">Policy gradients you can easily understand (GRPO, PPO, REINFORCE)</p>
 
