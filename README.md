@@ -11,7 +11,7 @@ The goal of this repo is to provide a simple implementation of policy gradient m
 >[!TIP]
 > For a comprehensive explanation of the methods implemented here, please refer to the [RLHF Book](https://rlhfbook.com), especially the chapter on [Policy Gradients](https://rlhfbook.com/c/11-policy-gradients).
 
-The structure of the repo is extremely simple:
+The structure of the source code is extremely simple:
 ```
 policy_grads
 ├── config.py  # Configuration of hyperparameters (e.g. learning rate, dataset size)
