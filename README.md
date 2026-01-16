@@ -28,17 +28,22 @@ See the full gallery of available datasets [here](https://github.com/open-though
 
 ## Installation
 
+For dependencies, this project uses [uv](https://docs.astral.sh/uv/). Once installed, you can sync the repository and install dependencies with:
+
 ```
-# install uv
-pip install uv
-
-# sync the repo
 uv sync
+```
 
-# Install flash attention separately
-# look up the correct combination of flash attn, cuda, python and torch versions, and then download from https://github.com/mjun0812/flash-attention-prebuild-wheels/
+In order to install flash attention, please go to this [repo](https://github.com/mjun0812/flash-attention-prebuild-wheels/) in order to find a wheel that matches your CUDA, Python and Torch versions. For example, installing Flash Attention 2.8.3 for CUDA 12.8, Python 3.12 and Torch 2.9 can be done with:
+
+```
 uv pip install https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.4.17/flash_attn-2.8.3+cu128torch2.9-cp312-cp312-linux_x86_64.whl
 ```
+
+>[!WARNING]
+> If you re-run `uv sync`, you may need to re-install flash attention with the above command.
+
+## Development
 
 To run the main training script, say with grpo:
 ```
