@@ -4,7 +4,6 @@ A minimal hackable implementation of policy gradient methods (e.g. GRPO, PPO) fo
 
 ![Training Sample](./assets/training_sample.png)
 
-
 ## About
 
 The goal of this repo is to provide a simple implementation of policy gradient methods that is easy to understand and modify, and can run on as few as **1 GPU**.
@@ -14,7 +13,7 @@ For a comprehensive explanation of the methods implemented here, please refer to
 The structure of the repo is extremely simple:
 ```
 policy_grads
-├── config.py  # Configuration of hyperparameters (e.g. learning rate, dataset size, ...)
+├── config.py  # Configuration of hyperparameters (e.g. learning rate, dataset size)
 ├── utils.py   # Utils for pretty prints
 ├── loss.py    # Policy gradient objectives (GRPO, PPO, REINFORCE, ...)
 ├── buffer.py  # Replay buffer for episodic learning
