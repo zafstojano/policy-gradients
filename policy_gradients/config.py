@@ -41,7 +41,7 @@ class Config(BaseModel):
     model_device_id: int = 0
     ref_model_device_id: int = 1
     val_model_device_id: int = 2
-    wandb_project: str = "policy-grads"
+    wandb_project: str = "policy-gradients"
     wandb_run_name: str | None = None
 
 
