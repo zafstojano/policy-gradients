@@ -23,11 +23,11 @@ In many of the cases, it's possible to train a model on a **single GPU**. For ex
 The structure of the source code is extremely simple:
 ```
 policy_grads
-├── config.py  # Configuration of hyperparameters (e.g. learning rate, dataset size)
-├── utils.py   # Utils for pretty prints
+├── train.py   # Main rollout and training loop
 ├── loss.py    # Policy gradient objectives (GRPO, PPO, REINFORCE, ...)
 ├── buffer.py  # Replay buffer for episodic learning
-└── train.py   # Main inference (rollout) and training loop
+├── config.py  # Configuration of hyperparameters (learning rate, gamma, ...)
+└──  utils.py   # Utils for pretty prints
 ```
 
 Each method has its own YAML configuration file (parsed by `config.py`):
