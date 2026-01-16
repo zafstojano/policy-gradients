@@ -15,7 +15,7 @@ Most production RL libraries are hard to debug, as they use vLLM for inference, 
 
 This repo takes a different approach: a straight-forward implementation based on PyTorch/transformers, no distributed complexity, and code you can easily step through with a debugger.
 
-In many of the cases, it's possible to train a model on a **single GPU**. For example, you can train `Qwen/Qwen3-1.7B` with GRPO on a modest 24GB NVIDIA A10G.
+In many of the cases, it's possible to train a policy model on a **single GPU**. For example, you can train `Qwen/Qwen3-1.7B` with GRPO on a modest 24GB NVIDIA A10G.
 
 >[!TIP]
 > For a comprehensive explanation of the methods implemented here, please refer to the [RLHF Book](https://rlhfbook.com), especially the chapter on [Policy Gradients](https://rlhfbook.com/c/11-policy-gradients).
