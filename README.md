@@ -4,7 +4,7 @@
 <p align="center">A minimal hackable implementation of policy gradient methods (GRPO, PPO, REINFORCE)</p>
 
 <p align="center">
-  <img src="./assets/training_sample.png" alt="Training Sample" width="80%">
+  <img src="./assets/training_sample.png" alt="Training Sample" width="85%">
 </p>
 
 ---
