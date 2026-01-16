@@ -1,7 +1,7 @@
 <p align="center">
   <img src="./assets/logo.png" alt="Policy Gradients logo">
 </p>
-<p align="center">A minimal hackable implementation of policy gradient methods (GRPO, PPO, REINFORCE) for training LLMs with RL</p>
+<p align="center">A minimal hackable implementation of policy gradient methods (GRPO, PPO, REINFORCE)</p>
 
 <p align="center">
   <img src="./assets/training_sample.png" alt="Training Sample">
