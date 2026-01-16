@@ -50,7 +50,7 @@ For dependency management, this project uses [uv](https://docs.astral.sh/uv/). O
 uv sync
 ```
 
-To install flash attention, please visit this [repo](https://github.com/mjun0812/flash-attention-prebuild-wheels/) to find a wheel that matches your CUDA, Python and Torch versions. For example, installing Flash Attention 2.8.3 for CUDA 12.8, Python 3.12 and Torch 2.9 can be done with:
+To install flash attention, visit this [repo](https://github.com/mjun0812/flash-attention-prebuild-wheels/) to find a wheel that matches your CUDA, Python and Torch versions. For example, installing Flash Attention 2.8.3 for CUDA 12.8, Python 3.12 and Torch 2.9 can be done with:
 
 ```
 uv pip install https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.4.17/flash_attn-2.8.3+cu128torch2.9-cp312-cp312-linux_x86_64.whl
