@@ -1,5 +1,5 @@
 [project]
-name = "policy-grads"
+name = "policy-gradients"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"

@@ -10,6 +10,6 @@ uv run pre-commit run --all-files
 
 To run the main training script, say with grpo:
 ```
-uv run python -m policy_grads.train --config configs/grpo.yaml
+uv run python -m policy_gradients.train --config configs/grpo.yaml
 ```
 Never run this yourself directly to verify the implementation

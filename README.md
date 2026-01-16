@@ -22,7 +22,7 @@ In many of the cases, it's possible to train a model on a **single GPU**. For ex
 
 The structure of the source code is extremely simple:
 ```
-policy_grads
+policy_gradients
 ├── train.py   # Main rollout and training loop
 ├── loss.py    # Policy gradient objectives (GRPO, PPO, REINFORCE, ...)
 ├── buffer.py  # Replay buffer for episodic learning
@@ -62,7 +62,7 @@ uv pip install https://github.com/mjun0812/flash-attention-prebuild-wheels/relea
 
 Then, to run the main training script, say with GRPO:
 ```
-uv run python -m policy_grads.train --config configs/grpo.yaml
+uv run python -m policy_gradients.train --config configs/grpo.yaml
 ```
 
 
