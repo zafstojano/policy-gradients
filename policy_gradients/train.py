@@ -237,7 +237,6 @@ def rollout(
         )
         for entry in entries
     ]
-
     model_inputs = tokenizer(
         message_templates,
         return_tensors="pt",
@@ -257,7 +256,6 @@ def rollout(
         max_length=max_length,
         pad_token_id=pad_token_id,
     )
-
     sequence_ids = model.generate(**model_inputs, generation_config=generation_config)
     completion_ids = sequence_ids[:, model_inputs["input_ids"].shape[1] :]
     completions = tokenizer.batch_decode(completion_ids, skip_special_tokens=True)
