@@ -14,9 +14,6 @@ from reasoning_gym.composite import DatasetSpec
 from reasoning_gym.dataset import ProceduralDataset
 from reasoning_gym.utils import SYSTEM_PROMPTS, extract_answer
 from rich.console import Console
-from rich.panel import Panel
-from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
-from rich.table import Table
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
@@ -26,6 +23,7 @@ import wandb
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
 from .config import Config, load_config
 from .loss import CISPOLoss, GRPOLoss, GSPOLoss, PPOLoss, ReinforceLoss, approx_kl, masked_mean
+from .utils import print_model_info, print_rollout_sample, print_step_header, progress_bar
 
 
 def seed_everything(seed: int) -> None:
@@ -279,19 +277,6 @@ def rollout(
     return sequence_ids, action_mask, attention_mask, rewards, completions
 
 
-def progress_bar(console: Console) -> Progress:
-    return Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TextColumn("•"),
-        TimeElapsedColumn(),
-        console=console,
-        transient=False,
-    )
-
-
 def create_dataset(cfg: Config) -> ProceduralDataset:
     specs = [DatasetSpec(name=s.name, weight=s.weight, config=s.config) for s in cfg.data.specs]
     return rg.create_dataset("composite", size=cfg.data.size, seed=cfg.seed, datasets=specs)
@@ -337,19 +322,10 @@ def main(cfg: Config):
         wandb.init(mode="disabled")
     else:
         wandb.init(project=cfg.wandb_project, name=cfg.wandb_run_name, config=vars(cfg))
-    console.print(
-        Panel(
-            f"[bold magenta]Model:[/bold magenta] {model}\n"
-            f"[dim]Parameters:[/dim] {sum(p.numel() for p in model.parameters()):,}\n"
-            f"[dim]Device:[/dim] {model.device}\n"
-            f"[dim]Loss:[/dim] {cfg.loss}",
-            title="[bold magenta]Configuration[/bold magenta]",
-            border_style="magenta",
-        )
-    )
+    print_model_info(console, model)
 
     for step, batch in enumerate(dataloader):
-        console.rule(f"[bold cyan]STEP {step + 1}/{len(dataloader)}[/bold cyan]", style="cyan")
+        print_step_header(console, step=step, total=len(dataloader))
         model.eval()
         if val_model:
             val_model.eval()
@@ -397,27 +373,8 @@ def main(cfg: Config):
 
         # Summarize rollouts
         avg_reward = torch.cat(rollout_rewards, dim=0).mean().item()
-        sample_q, sample_a, sample_completions = rollout_completions[0]
-        sample_completion = sample_completions[0]
         wandb.log({"avg_reward": avg_reward})
-        console.print(
-            Panel(
-                f"[bold green]Average Reward:[/bold green] {avg_reward:.4f}",
-                title="[bold cyan]Rollout Results[/bold cyan]",
-                border_style="cyan",
-            )
-        )
-        sample_preview = sample_completion[:1000]
-        if len(sample_completion) > 1000:
-            sample_preview += "[dim]... (truncated)[/dim]"
-        sample_table = Table(show_header=False, box=None, padding=(0, 1), show_edge=False)
-        sample_table.add_column("Label", style="dim", width=12)
-        sample_table.add_column("Content")
-        sample_table.add_row("Question:", sample_q[:150] + ("..." if len(sample_q) > 150 else ""))
-        sample_table.add_row("Oracle:", str(sample_a))
-        sample_table.add_row("Completion:", sample_preview)
-        console.print(Panel(sample_table, title="[bold cyan]Sample[/bold cyan]", border_style="dim"))
-        console.print()
+        print_rollout_sample(console, reward=avg_reward, rollout_completions=rollout_completions)
 
         torch.cuda.empty_cache()
         model.train()
@@ -448,7 +405,6 @@ def main(cfg: Config):
                 values = compute_values(val_model, experience.sequence_ids, experience.attention_mask)
                 loss = objective(log_probs=log_probs, experience=experience, values=values)
                 if not loss.isfinite():
-                    console.print(f"[bold yellow]⚠ WARNING:[/bold yellow] Infinite loss (Batch {batch_idx + 1})")
                     continue
                 scaled_loss = loss / cfg.batch_acc
                 scaled_loss.backward()
