@@ -1,7 +1,7 @@
 <p align="center">
   <img src="./assets/logo.png" alt="Policy Gradients logo">
 </p>
-<p align="center">A minimal hackable implementation of policy gradient methods (GRPO, PPO, REINFORCE)</p>
+<p align="center">Policy gradients you can easily understand (GRPO, PPO, REINFORCE)</p>
 
 <p align="center">
   <img src="./assets/training_sample.png" alt="Training Sample" width="85%">
@@ -11,13 +11,11 @@
 
 ## Overview
 
-The goal of this repo is to provide a simple implementation of policy gradient methods that is easy to understand and modify, and can run on as few as **1 GPU**.
+Most production RL libraries are hard to debug, as they use vLLM for inference, FSDP for training, and Ray to glue it all together. Good luck navigating through that.
 
-Often times, production-ready libraries are hard to understand, as they use vLLM for inference, FSDP for policy training, and Ray for communicating between the distributed processes.
+This repo takes a different approach: a straight-forward implementation based on PyTorch/transformers, no distributed complexity, and code you can easily step through. Set a breakpoint, inspect the variables, understand what's happening.
 
-Instead, this repo provides an educational implementation that has a single entrypoint (`train.py`), which can be run with a debugger, and inspect all states at any time.
-
-The focus is not an efficient distributed implementation, rather one that can be run on as few as a single GPU in order to understand what is going on under the hood. For example, you can train `Qwen/Qwen3-1.7B` with GRPO, without KL divergence (due to needing another copy of the reference model) using a single 24GB NVIDIA A10G.
+In many of the cases, it's possible to train a model on a **single GPU**. For example, you can train `Qwen/Qwen3-1.7B` with GRPO (without KL divergence, which would require a reference model copy) on a modest 24GB NVIDIA A10G.
 
 >[!TIP]
 > For a comprehensive explanation of the methods implemented here, please refer to the [RLHF Book](https://rlhfbook.com), especially the chapter on [Policy Gradients](https://rlhfbook.com/c/11-policy-gradients).
@@ -46,13 +44,13 @@ configs
 
 ## Getting started
 
-For dependencies, this project uses [uv](https://docs.astral.sh/uv/). Once installed, you can sync the repository with:
+For dependency management, this project uses [uv](https://docs.astral.sh/uv/). Once installed, you can sync the virtual environment with:
 
 ```
 uv sync
 ```
 
-In order to install flash attention, please go to this [repo](https://github.com/mjun0812/flash-attention-prebuild-wheels/) in order to find a wheel that matches your CUDA, Python and Torch versions. For example, installing Flash Attention 2.8.3 for CUDA 12.8, Python 3.12 and Torch 2.9 can be done with:
+To install flash attention, please visit this [repo](https://github.com/mjun0812/flash-attention-prebuild-wheels/) to find a wheel that matches your CUDA, Python and Torch versions. For example, installing Flash Attention 2.8.3 for CUDA 12.8, Python 3.12 and Torch 2.9 can be done with:
 
 ```
 uv pip install https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.4.17/flash_attn-2.8.3+cu128torch2.9-cp312-cp312-linux_x86_64.whl
@@ -69,7 +67,7 @@ uv run python -m policy_grads.train --config configs/grpo.yaml
 
 
 ## Data
-This project is using [Reasoning Gym](https://github.com/open-thought/reasoning-gym) for generating procedural datasets. In the YAML file simply specify which datasets you want to use, along with their configurations. For example:
+This project uses [Reasoning Gym](https://github.com/open-thought/reasoning-gym) for generating procedural datasets, along with their verifiers. In the YAML file, simply specify which datasets you want to use, along with their configurations. For example:
 
 ```yaml
 data:

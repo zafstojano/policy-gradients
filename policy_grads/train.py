@@ -319,7 +319,7 @@ def main(cfg: Config):
     params = list(model.parameters()) + (list(val_model.parameters()) if val_model else [])
     optimizer = optim.Adam(params, lr=cfg.lr)
     replay_buffer = ReplayBuffer()
-    effective_inference_batch_size = cfg.num_rollouts if cfg.num_rollouts > 1 else cfg.prompts_per_step
+    rollout_batch_size = cfg.num_rollouts if cfg.num_rollouts > 1 else cfg.prompts_per_step
 
     if cfg.wandb_project is None:
         wandb.init(mode="disabled")
@@ -337,9 +337,9 @@ def main(cfg: Config):
 
         with progress_bar(console) as progress:
             entries = [entry for entry in batch for _ in range(cfg.num_rollouts)]
-            task = progress.add_task("Generating rollouts", total=len(entries) // effective_inference_batch_size)
+            task = progress.add_task("Generating rollouts", total=len(entries) // rollout_batch_size)
 
-            for batch in batched(entries, effective_inference_batch_size):
+            for batch in batched(entries, rollout_batch_size):
                 with torch.no_grad():
                     sequence_ids, action_mask, attention_mask, rewards, completions = rollout(
                         model=model,
