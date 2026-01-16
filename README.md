@@ -1,11 +1,28 @@
-# Policy Grads
+# Policy Gradients
 
-A minimal hackable implementation of policy gradients for training large language models with RL.
+A minimal hackable implementation of policy gradient methods (e.g. GRPO, PPO) for training LLMs with RL.
 
-For a comprehensive explanation of the methods implemented here, please refer to the [RLHF Book](https://rlhfbook.com).
+![Training Sample](./assets/training_sample.png)
 
 
-## Get started
+## About
+
+The goal of this repo is to provide a simple implementation of policy gradient methods that is easy to understand and modify, and can run on as few as **1 GPU**.
+
+For a comprehensive explanation of the methods implemented here, please refer to the [RLHF Book](https://rlhfbook.com), especially the chapter on [Policy Gradients](https://rlhfbook.com/c/11-policy-gradients)
+
+The structure of the repo is extremely simple:
+```
+policy_grads
+├── config.py  # Configuration of hyperparameters (e.g. learning rate, dataset size, ...)
+├── utils.py   # Utils for pretty prints
+├── loss.py    # Policy gradient objectives (GRPO, PPO, REINFORCE, ...)
+├── buffer.py  # Replay buffer for episodic learning
+└── train.py   # Main inference (rollout) and training loop
+```
+
+
+## Getting started
 
 For dependencies, this project uses [uv](https://docs.astral.sh/uv/). Once installed, you can sync the repository with:
 
