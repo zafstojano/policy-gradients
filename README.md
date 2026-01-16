@@ -21,6 +21,17 @@ policy_grads
 └── train.py   # Main inference (rollout) and training loop
 ```
 
+Each method has its own YAML configuration file (parsed by `config.py`):
+```
+configs
+├── cispo.yaml
+├── drgrpo.yaml
+├── grpo.yaml
+├── gspo.yaml
+├── ppo.yaml
+├── reinforce.yaml
+└── rloo.yaml
+```
 
 ## Getting started
 
