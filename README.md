@@ -3,7 +3,7 @@
 
 # Policy Grads
 
-A minimal hackable implementation of policy gradients for training large language models with reinforcement learning.
+A minimal hackable implementation of policy gradients for training large language models with RL.
 
 
 
