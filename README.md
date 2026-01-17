@@ -62,10 +62,10 @@ uv run python -m policy_gradients.train --config configs/grpo.yaml
 The repository implements several popular policy gradient algorithms:
 
 1. REINFORCE\
-$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^T \log \pi_\theta \left( a_t | s_t \right) A_t  \right$
+$$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^T \log \pi_\theta \left( a_t | s_t \right) A_t  \right$$
 
 2. REINFORCE Leave One Out (RLOO)\
-$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^T \log \pi_\theta \left( a_t | s_t \right) A_t  \right$
+$$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^T \log \pi_\theta \left( a_t | s_t \right) A_t  \right$$
 
 
 Each method has its own YAML configuration file (parsed by `config.py`):
