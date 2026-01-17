@@ -71,8 +71,8 @@ $$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{K} \sum_{i=1}^K
 
 
 **Proximal Policy Optimization (PPO)** 
-$$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{T} \sum_{t=1}^T  \min \left( \frac{\pi_\theta \left( a_{i, t} | s_{i, t} \right) }{\pi_{\theta_{\text{old}}} A_t, \text{clip} \left( \frac{\pi_\theta \left( a_{i, t} | s_{i, t} \right) }{\pi_{\theta_{\text{old}}}, 1 - \epsilon, 1 + \epsilon   \right)  \right)    \right]$$ 
 
+$$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{T} \sum_{t=1}^T  \min \left( \frac{\pi_\theta \left( a_{i, t} | s_{i, t} \right) }{\pi_{\theta_{\text{old}}} A_t, \text{clip} \left( \frac{\pi_\theta \left( a_{i, t} | s_{i, t} \right) }{\pi_{\theta_{\text{old}}}, 1 - \epsilon, 1 + \epsilon   \right)  \right)    \right]$$ 
 
 
 **Clipped Importance Sampling Policy Optimization (CISPO)**
