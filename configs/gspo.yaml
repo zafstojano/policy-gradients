@@ -11,7 +11,7 @@ loss: gspo
 model_name: Qwen/Qwen3-1.7B
 clip_eps_lo: 0.2
 clip_eps_hi: 0.2
-beta: 0.0
+beta: 0.0  # when beta is set to 0, we don't load the reference model and skip KL penalty
 lr: 5e-6
 temperature: 0.6
 top_p: 0.95
