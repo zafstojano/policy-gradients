@@ -72,7 +72,15 @@ $$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{K} \sum_{i=1}^K
 
 **Proximal Policy Optimization (PPO)** 
 
-$$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{T} \sum_{t=1}^T  \min \left( \frac{\pi_\theta \left( a_{i, t} | s_{i, t} \right) }{\pi_{\theta_{\text{old}}}} A_t, \text{clip} \left( \frac{\pi_\theta \left( a_{i, t} | s_{i, t} \right) }{\pi_{\theta_{\text{old}}}}, 1 - \epsilon, 1 + \epsilon   \right) A_t  \right)    \right]$$
+$$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{T} \sum_{t=1}^T  \min \left( \frac{\pi_\theta \left( a_{t} | s_{t} \right) }{\pi_{\theta_{\text{old}}}} A_t, \text{clip} \left( \frac{\pi_\theta \left( a_{t} | s_{t} \right) }{\pi_{\theta_{\text{old}}}}, 1 - \epsilon, 1 + \epsilon   \right) A_t  \right)    \right]$$
+
+**Group Relative Policy Optimization (GRPO)** 
+
+$$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \frac{1}{G} \sum_{i=1}^G  \frac{1}{T} \sum_{t=1}^T  \min \left( \frac{\pi_\theta \left( a_{i, t} | s_{i, t} \right) }{\pi_{\theta_{\text{old}}}} A_i, \text{clip} \left( \frac{\pi_\theta \left( a_{i, t} | s_{i, t} \right) }{\pi_{\theta_{\text{old}}}}, 1 - \epsilon, 1 + \epsilon   \right) A_i  \right)  \right]$$
+
+$$ \text{s.t.} \quad\quad A_i = \frac{R_i - \text{mean}\left( R_{1:G} \right)}{\text{std}(R_{1:g})} $$
+
+
 
 **Clipped Importance Sampling Policy Optimization (CISPO)**
 
