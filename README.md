@@ -53,7 +53,7 @@ Then, to run the main training script, say with GRPO:
 uv run python -m policy_gradients.train --config configs/grpo.yaml
 ```
 
-# Supported methods
+## Supported methods
 
 >[!TIP]
 > For a comprehensive explanation of the methods implemented here, please refer to the [RLHF Book](https://rlhfbook.com), especially the chapter on [Policy Gradients](https://rlhfbook.com/c/11-policy-gradients).
