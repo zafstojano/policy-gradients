@@ -1,5 +1,5 @@
 data:
-  size: 3000
+  size: 15000
   specs:
     - name: spell_backward
       weight: 1
@@ -22,7 +22,7 @@ top_p: 0.95
 top_k: 20
 min_p: 0.0
 max_new_tokens: 512
-prompts_per_step: 16
+prompts_per_step: 8
 num_rollouts: 1  # for PPO num rollouts should be 1
 train_batch_size: 2
 batch_acc: 4
