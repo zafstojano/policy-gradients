@@ -40,7 +40,6 @@ def split_experience_batch(experience: Experience) -> list[Experience]:
 
 
 def pad_sequences(tensor_list: list[torch.Tensor], how: str = "start") -> torch.Tensor:
-    """Pad variable tensors to the same length."""
     assert how in ("start", "end")
     max_len = max(t.size(0) for t in tensor_list)
     padded_tensors = []
