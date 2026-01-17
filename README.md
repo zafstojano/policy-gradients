@@ -61,6 +61,9 @@ uv run python -m policy_gradients.train --config configs/grpo.yaml
 
 The repository implements several popular policy gradient algorithms:
 
+**The Cauchy-Schwarz Inequality**\
+$$\left( \sum_{k=1}^n a_k b_k \right)^2 \leq \left( \sum_{k=1}^n a_k^2 \right) \left( \sum_{k=1}^n b_k^2 \right)$$
+
 1. REINFORCE\
 $$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^T \log \pi_\theta \left( a_t | s_t \right) A_t  \right]$$
 
