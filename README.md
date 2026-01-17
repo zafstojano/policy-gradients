@@ -67,7 +67,7 @@ uv run python -m policy_gradients.train --config configs/grpo.yaml
 
 
 ## Data
-This project uses [Reasoning Gym](https://github.com/open-thought/reasoning-gym) for generating procedural datasets, along with their verifiers. In the YAML file, simply specify which datasets you want to use, along with their configurations. For example:
+This project uses [Reasoning Gym](https://github.com/open-thought/reasoning-gym) for generating procedural datasets. In the YAML file, simply specify which datasets you want to use, along with their configurations. For example:
 
 ```yaml
 data:

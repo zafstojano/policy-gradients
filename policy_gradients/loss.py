@@ -128,6 +128,7 @@ class PPOLoss(nn.Module):
 
     def forward(self, log_probs: torch.Tensor, experience: Experience, values: torch.Tensor, **kwargs) -> torch.Tensor:
         # Value loss
+        values = values.to(log_probs.device)
         returns = experience.advantages + experience.values_old  # A_t = G_t - V(s_t)  =>  G_t = A_t + V(s_t)
         values_clipped = torch.clamp(
             values, experience.values_old - self.clip_eps_val, experience.values_old + self.clip_eps_val
