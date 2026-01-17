@@ -70,17 +70,17 @@ $$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^T \log \pi_\th
 $$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{K} \sum_{i=1}^K  \frac{1}{T}  \sum_{t=0}^T \log \pi_\theta \left( a_{i, t} | s_{i, t} \right) \left( R_i - \frac{1}{K-1} \sum_{j \neq i} R_j  \right)  \right] $$
 
 
-**Proximal Policy Optimization (PPO)** 
+**Proximal Policy Optimization (PPO)**
 
-$$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{T} \sum_{t=1}^T  \min \left( \frac{\pi_\theta \left( a_{t} | s_{t} \right) }{\pi_{\theta_{\text{old}}}} A_t, \text{clip} \left( \frac{\pi_\theta \left( a_{t} | s_{t} \right) }{\pi_{\theta_{\text{old}}}}, 1 - \epsilon, 1 + \epsilon   \right) A_t  \right)    \right]$$
+$$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \frac{1}{T} \sum_{t=1}^T \min \left( p_t A_t, \text{clip}(p_t, 1-\epsilon, 1+\epsilon) A_t \right) \right] $$
 
-**Group Relative Policy Optimization (GRPO)** 
+$$ \text{s.t.} \quad\quad p_t = \frac{\pi_\theta(a_t | s_t)}{\pi_{\theta_{\text{old}}}(a_t | s_t)} $$
 
-$$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \frac{1}{G} \sum_{i=1}^G  \frac{1}{T} \sum_{t=1}^T  \min \left( \frac{\pi_\theta \left( a_{i, t} | s_{i, t} \right) }{\pi_{\theta_{\text{old}}}} A_i, \text{clip} \left( \frac{\pi_\theta \left( a_{i, t} | s_{i, t} \right) }{\pi_{\theta_{\text{old}}}}, 1 - \epsilon, 1 + \epsilon   \right) A_i  \right)  \right]$$
+**Group Relative Policy Optimization (GRPO)**
 
-$$ \text{s.t.} \quad\quad A_i = \frac{R_i - \text{mean}\left( R_{1:G} \right)}{\text{std}(R_{1:g})} $$
+$$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \frac{1}{G} \sum_{i=1}^G \frac{1}{T} \sum_{t=1}^T \min \left( p_{i,t} A_i, \text{clip}(p_{i,t}, 1-\epsilon, 1+\epsilon) A_i \right) \right] $$
 
-
+$$ \text{s.t.} \quad\quad p_{i,t} = \frac{\pi_\theta(a_{i,t} | s_{i,t})}{\pi_{\theta_{\text{old}}}(a_{i,t} | s_{i,t})} \quad\quad A_i = \frac{R_i - \text{mean}(R_{1:G})}{\text{std}(R_{1:G})} $$
 
 **Clipped Importance Sampling Policy Optimization (CISPO)**
 
