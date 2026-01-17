@@ -11,7 +11,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import wandb
 from reasoning_gym.composite import DatasetSpec
 from reasoning_gym.dataset import ProceduralDataset
 from reasoning_gym.utils import SYSTEM_PROMPTS, extract_answer
@@ -19,6 +18,8 @@ from rich.console import Console
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
+
+import wandb
 
 from .buffer import Experience, ReplayBuffer, join_experiences_batch
 from .config import Config, load_config
@@ -316,7 +317,6 @@ def main(cfg: Config):
     params = list(model.parameters()) + (list(val_model.parameters()) if val_model else [])
     optimizer = optim.Adam(params, lr=cfg.lr)
     replay_buffer = ReplayBuffer()
-    rollout_batch_size = cfg.num_rollouts if cfg.num_rollouts > 1 else cfg.prompts_per_step
 
     if cfg.wandb_project is None:
         wandb.init(mode="disabled")
@@ -334,9 +334,9 @@ def main(cfg: Config):
 
         with progress_bar(console) as progress:
             entries = [entry for entry in batch for _ in range(cfg.num_rollouts)]
-            task = progress.add_task("Generating rollouts", total=len(entries) // rollout_batch_size)
+            task = progress.add_task("Generating rollouts", total=len(entries) // cfg.rollout_batch_size)
 
-            for batch in batched(entries, rollout_batch_size):
+            for batch in batched(entries, cfg.rollout_batch_size):
                 with torch.no_grad():
                     sequence_ids, action_mask, attention_mask, rewards, completions = rollout(
                         model=model,

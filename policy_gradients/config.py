@@ -1,7 +1,7 @@
 from typing import Any
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class DatasetSpec(BaseModel):
@@ -34,6 +34,7 @@ class Config(BaseModel):
     max_new_tokens: int = 512
     prompts_per_step: int = 4
     num_rollouts: int = 8
+    rollout_batch_size: int = 8
     train_batch_size: int = 2
     batch_acc: int = 4
     max_norm: float = 1.0
@@ -41,8 +42,14 @@ class Config(BaseModel):
     model_device_id: int = 0
     ref_model_device_id: int = 1
     val_model_device_id: int = 2
-    wandb_project: str = "policy-gradients"
+    wandb_project: str | None = None
     wandb_run_name: str | None = None
+
+    @model_validator(mode="after")
+    def validate_rollout_batch_size(self) -> "Config":
+        if self.num_rollouts > 1 and self.rollout_batch_size != self.num_rollouts:
+            raise ValueError("When num_rollouts > 1, rollout_batch_size must equal num_rollouts.")
+        return self
 
 
 def load_config(config_path: str) -> Config:
