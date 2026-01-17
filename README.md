@@ -44,6 +44,8 @@ configs
 
 This project heavily borrows implementation ideas from [tiny-grpo](https://github.com/open-thought/tiny-grpo), and can be seen as an extension that implements several other policy gradient methods.
 
+![WandB runs](./assets/wandb.png)
+
 ## Getting started
 
 For dependency management, this project uses [uv](https://docs.astral.sh/uv/). Once installed, you can sync the virtual environment with:
