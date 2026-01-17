@@ -150,17 +150,19 @@ def compute_gae(
     rewards: torch.Tensor, action_mask: torch.Tensor, values: torch.Tensor, gamma: float, lam: float
 ) -> torch.Tensor:
     B, S = action_mask.size()
+    device = action_mask.device
     last_action_indices = action_mask.long().cumsum(dim=-1).argmax(dim=-1, keepdim=True)  # (B, 1)
-    indices = torch.arange(S, device=action_mask.device).unsqueeze(0)  # (1, S)
+    indices = torch.arange(S, device=device).unsqueeze(0)  # (1, S)
     done = (indices >= last_action_indices).float()  # (B, S)
 
-    rewards = torch.zeros_like(action_mask, device=action_mask.device, dtype=torch.float32).scatter_(
+    rewards = torch.zeros_like(action_mask, device=device, dtype=torch.float32).scatter_(
         dim=-1, index=last_action_indices, src=rewards
     )  # (B, S)
 
-    advantages = torch.zeros_like(action_mask, dtype=torch.float32, device=action_mask.device)  # (B, S)
-    next_values = torch.zeros(B, device=action_mask.device, dtype=torch.float32)  # (B,)
-    running = torch.zeros(B, device=action_mask.device, dtype=torch.float32)  # (B,)
+    values = values.to(device)
+    advantages = torch.zeros_like(action_mask, dtype=torch.float32, device=device)  # (B, S)
+    next_values = torch.zeros(B, device=device, dtype=torch.float32)  # (B,)
+    running = torch.zeros(B, device=device, dtype=torch.float32)  # (B,)
 
     for t in reversed(range(S)):
         not_done = 1.0 - done[:, t]  # prevent spilling over at episode end
