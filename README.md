@@ -67,7 +67,7 @@ $$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^T \log \pi_\th
 
 **REINFORCE Leave One Out (RLOO)**
 
-$$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^T \log \pi_\theta \left( a_t | s_t \right) A_t  \right]$$
+$$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{K} \sum_{i=1}^K  \sum_{t=0}^T \log \pi_\theta \left( a_{i, t} | s_{i, t} \right) \left( R_i - \frac{1}{K-1} \sum_{j \neq i} R_j  \right)  \right] $$
 
 Each method has its own YAML configuration file (parsed by `config.py`):
 ```
@@ -86,7 +86,6 @@ Below is a comparison of the different methods when trained on a task to spell a
 <p align="center">
   <img src="./assets/wandb.png" alt="WandB runs" width="70%">
 </p>
-
 
 
 ## Data
