@@ -61,41 +61,50 @@ uv run python -m policy_gradients.train --config configs/grpo.yaml
 
 The repository implements several popular policy gradient algorithms:
 
-**REINFORCE**
+**REINFORCE** [Williams (1992)](https://link.springer.com/article/10.1007/BF00992696)
 
 $$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^T \log \pi_\theta \left( a_t | s_t \right) A_t  \right]$$
 
-**REINFORCE Leave One Out (RLOO)**
+
+**REINFORCE Leave One Out (RLOO)** [Ahmadian et al. (2024)](https://arxiv.org/abs/2402.14740)
 
 $$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{K} \sum_{i=1}^K  \frac{1}{T}  \sum_{t=0}^T \log \pi_\theta \left( a_{i, t} | s_{i, t} \right) \left( R_i - \frac{1}{K-1} \sum_{j \neq i} R_j  \right)  \right] $$
 
 
-**Proximal Policy Optimization (PPO)**
+**Proximal Policy Optimization (PPO)** [Schulman et al. (2017)](https://arxiv.org/abs/1707.06347)
 
 $$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \frac{1}{T} \sum_{t=1}^T \min \left( p_t A_t, \text{clip}(p_t, 1-\epsilon, 1+\epsilon) A_t \right) \right] $$
 
 $$ \text{s.t.} \quad\quad p_t = \frac{\pi_\theta(a_t | s_t)}{\pi_{\theta_{\text{old}}}(a_t | s_t)} $$
 
-**Group Relative Policy Optimization (GRPO)**
+
+**Group Relative Policy Optimization (GRPO)** [Shao et al. (2024)](https://arxiv.org/abs/2402.03300)
 
 $$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \frac{1}{G} \sum_{i=1}^G \frac{1}{T} \sum_{t=1}^T \min \left( p_{i,t} A_i, \text{clip}(p_{i,t}, 1-\epsilon, 1+\epsilon) A_i \right) \right] $$
 
 $$ \text{s.t.} \quad\quad p_{i,t} = \frac{\pi_\theta(a_{i,t} | s_{i,t})}{\pi_{\theta_{\text{old}}}(a_{i,t} | s_{i,t})} \quad\quad A_i = \frac{R_i - \text{mean}(R_{1:G})}{\text{std}(R_{1:G})} $$
 
 
-**Group Sequence Policy Optimization (GSPO)**
+**GRPO Done Right (Dr. GRPO)** [Liu et al. (2025)](https://arxiv.org/abs/2503.20783)
+
+$$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \frac{1}{G} \sum_{i=1}^G \frac{1}{T} \sum_{t=1}^T \min \left( p_{i,t} A_i, \text{clip}(p_{i,t}, 1-\epsilon, 1+\epsilon) A_i \right) \right] $$
+
+$$ \text{s.t.} \quad\quad p_{i,t} = \frac{\pi_\theta(a_{i,t} | s_{i,t})}{\pi_{\theta_{\text{old}}}(a_{i,t} | s_{i,t})} \quad\quad A_i = R_i - \text{mean}(R_{1:G})$$
+
+
+**Group Sequence Policy Optimization (GSPO)** [Zheng et al. (2025)](https://arxiv.org/abs/2507.18071)
 
 $$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \frac{1}{G}  \sum_{t=1}^T \min \left( p_{i} A_i, \text{clip}(p_{i}, 1-\epsilon, 1+\epsilon) A_i \right) \right] $$
 
 $$ \text{s.t.} \quad\quad p_{i} = \left( \frac{\pi_\theta(a_{i} | s_{i})}{\pi_{\theta_{\text{old}}}(a_{i} | s_{i})} \right)^{\frac{1}{|a_i|}} \quad\quad A_i = \frac{R_i - \text{mean}(R_{1:G})}{\text{std}(R_{1:G})} $$
 
 
-
-**Clipped Importance Sampling Policy Optimization (CISPO)**
+**Clipped Importance Sampling Policy Optimization (CISPO)** [MiniMax (2025)](https://arxiv.org/abs/2506.13585)
 
 $$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{G}\sum_{i=1}^G \frac{1}{T}\sum_{t=1}^T \text{sg}\left( \hat{p}_{i, t} \right) A_{i, t} \log \pi_\theta (a_{i, t} | s_{i, t})  \right] $$ 
 
 $$ \text{s.t.} \quad\quad \hat{p}_{i, t} = \text{clip} \left( p_{i, t}, 1 - \epsilon, 1 + \epsilon  \right) \quad\quad p_{i, t} = \frac{\pi_\theta \left( a_{i, t} | s_{i, t} \right) }{\pi_{\theta_{\text{old}}} \left( a_{i, t} | s_{i, t}  \right) } $$ 
+
 
 Each method has its own YAML configuration file (parsed by `config.py`):
 ```
