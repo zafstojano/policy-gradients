@@ -45,7 +45,7 @@ configs
 This project heavily borrows implementation ideas from [tiny-grpo](https://github.com/open-thought/tiny-grpo), and can be seen as an extension that implements several other policy gradient methods.
 
 <p align="center">
-  <img src="./assets/wandb.png" alt="WandB runs" width="80%">
+  <img src="./assets/wandb.png" alt="WandB runs" width="70%">
 </p>
 
 ## Getting started
