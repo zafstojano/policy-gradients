@@ -1,5 +1,5 @@
 data:
-  size: 12000 # since num_rollouts is 1, we increase the dataset size so that we perform enough gradient steps
+  size: 15000 # since num_rollouts is 1, we increase the dataset size so that we perform enough gradient steps
   specs:
     - name: spell_backward
       weight: 1
@@ -18,14 +18,14 @@ top_p: 0.95
 top_k: 20
 min_p: 0.0
 max_new_tokens: 512
-prompts_per_step: 32
+prompts_per_step: 8
 num_rollouts: 1  # for REINFORCE num_rollouts should be 1
 rollout_batch_size: 8
 train_batch_size: 2
 batch_acc: 4
 max_norm: 1.0
 seed: 42
-model_device_id: 0
+model_device_id: 3  # TODO: CHANGE THIS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ref_model_device_id: 1
 wandb_project: policy-gradients
 wandb_run_name: reinforce_spell_backwards
