@@ -82,6 +82,15 @@ $$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \frac{1}{G} \sum_{i=1}^G
 
 $$ \text{s.t.} \quad\quad p_{i,t} = \frac{\pi_\theta(a_{i,t} | s_{i,t})}{\pi_{\theta_{\text{old}}}(a_{i,t} | s_{i,t})} \quad\quad A_i = \frac{R_i - \text{mean}(R_{1:G})}{\text{std}(R_{1:G})} $$
 
+
+**Group Sequence Policy Optimization (GSPO)**
+
+$$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \frac{1}{G}  \sum_{t=1}^T \min \left( p_{i} A_i, \text{clip}(p_{i}, 1-\epsilon, 1+\epsilon) A_i \right) \right] $$
+
+$$ \text{s.t.} \quad\quad p_{i} = \left( \frac{\pi_\theta(a_{i} | s_{i})}{\pi_{\theta_{\text{old}}}(a_{i} | s_{i})} \right)^{\frac{1}{|a_i|}} \quad\quad A_i = \frac{R_i - \text{mean}(R_{1:G})}{\text{std}(R_{1:G})} $$
+
+
+
 **Clipped Importance Sampling Policy Optimization (CISPO)**
 
 $$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{G}\sum_{i=1}^G \frac{1}{T}\sum_{t=1}^T \text{sg}\left( \hat{p}_{i, t} \right) A_{i, t} \log \pi_\theta (a_{i, t} | s_{i, t})  \right] $$ 
