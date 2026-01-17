@@ -68,7 +68,7 @@ $$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^T \log \pi_\th
 
 **REINFORCE Leave One Out (RLOO)** [Ahmadian et al. (2024)](https://arxiv.org/abs/2402.14740)
 
-$$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{K} \sum_{i=1}^K  \frac{1}{T}  \sum_{t=0}^T \log \pi_\theta \left( a_{i, t} | s_{i, t} \right) \left( R_i - \frac{1}{K-1} \sum_{j \neq i} R_j  \right)  \right] $$
+$$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{K} \sum_{i=1}^K  \frac{1}{T}  \sum_{t=0}^T \log \pi_\theta \left( a_{i, t} | s_{i} \right) \left( R_i - \frac{1}{K-1} \sum_{j \neq i} R_j  \right)  \right] $$
 
 
 **Proximal Policy Optimization (PPO)** [Schulman et al. (2017)](https://arxiv.org/abs/1707.06347)
@@ -101,9 +101,9 @@ $$ \text{s.t.} \quad\quad p_{i} = \left( \frac{\pi_\theta(a_{i} | s_{i})}{\pi_{\
 
 **Clipped Importance Sampling Policy Optimization (CISPO)** [MiniMax (2025)](https://arxiv.org/abs/2506.13585)
 
-$$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{G}\sum_{i=1}^G \frac{1}{T}\sum_{t=1}^T \text{sg}\left( \hat{p}_{i, t} \right) A_{i, t} \log \pi_\theta (a_{i, t} | s_{i, t})  \right] $$ 
+$$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{G}\sum_{i=1}^G \frac{1}{T}\sum_{t=1}^T \text{sg}\left( \hat{p}_{i, t} \right) A_{i, t} \log \pi_\theta (a_{i, t} | s_{i})  \right] $$ 
 
-$$ \text{s.t.} \quad\quad \hat{p}_{i, t} = \text{clip} \left( p_{i, t}, 1 - \epsilon, 1 + \epsilon  \right) \quad\quad p_{i, t} = \frac{\pi_\theta \left( a_{i, t} | s_{i, t} \right) }{\pi_{\theta_{\text{old}}} \left( a_{i, t} | s_{i, t}  \right) } $$ 
+$$ \text{s.t.} \quad\quad \hat{p}_{i, t} = \text{clip} \left( p_{i, t}, 1 - \epsilon, 1 + \epsilon  \right) \quad\quad p_{i, t} = \frac{\pi_\theta \left( a_{i, t} | s_{i} \right) }{\pi_{\theta_{\text{old}}} \left( a_{i, t} | s_{i}  \right) } $$ 
 
 
 Each method has its own YAML configuration file (parsed by `config.py`):
