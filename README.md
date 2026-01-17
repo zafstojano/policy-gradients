@@ -17,9 +17,6 @@ This repo takes a different approach: a straight-forward implementation based on
 
 In many of the cases, it's possible to train a policy model on a **single GPU**. For example, you can train `Qwen/Qwen3-1.7B` with GRPO on a modest 24GB NVIDIA A10G.
 
->[!TIP]
-> For a comprehensive explanation of the methods implemented here, please refer to the [RLHF Book](https://rlhfbook.com), especially the chapter on [Policy Gradients](https://rlhfbook.com/c/11-policy-gradients).
-
 The structure of the source code is extremely simple:
 ```
 policy_gradients
@@ -30,23 +27,8 @@ policy_gradients
 └── utils.py   # Utils for pretty prints
 ```
 
-Each method has its own YAML configuration file (parsed by `config.py`):
-```
-configs
-├── cispo.yaml
-├── drgrpo.yaml
-├── grpo.yaml
-├── gspo.yaml
-├── ppo.yaml
-├── reinforce.yaml
-└── rloo.yaml
-```
-
 This project heavily borrows implementation ideas from [tiny-grpo](https://github.com/open-thought/tiny-grpo), and can be seen as an extension that implements several other policy gradient methods.
 
-<p align="center">
-  <img src="./assets/wandb.png" alt="WandB runs" width="70%">
-</p>
 
 ## Getting started
 
@@ -70,6 +52,40 @@ Then, to run the main training script, say with GRPO:
 ```
 uv run python -m policy_gradients.train --config configs/grpo.yaml
 ```
+
+# Supported methods
+
+>[!TIP]
+> For a comprehensive explanation of the methods implemented here, please refer to the [RLHF Book](https://rlhfbook.com), especially the chapter on [Policy Gradients](https://rlhfbook.com/c/11-policy-gradients).
+
+
+The repository implements several popular policy gradient algorithms:
+
+1. REINFORCE
+$$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^T \log \pi_\theta \left( a_t | s_t \right) A_t  \right$$
+
+2. REINFORCE Leave One Out (RLOO)
+$$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^T \log \pi_\theta \left( a_t | s_t \right) A_t  \right$$
+
+
+Each method has its own YAML configuration file (parsed by `config.py`):
+```
+configs
+├── cispo.yaml
+├── drgrpo.yaml
+├── grpo.yaml
+├── gspo.yaml
+├── ppo.yaml
+├── reinforce.yaml
+└── rloo.yaml
+```
+
+Below is a comparison of the different methods when trained on a task to spell a word backwards. 
+
+<p align="center">
+  <img src="./assets/wandb.png" alt="WandB runs" width="70%">
+</p>
+
 
 
 ## Data
