@@ -11,7 +11,7 @@
 
 ## Overview
 
-Most production-grade RL libraries are hard to debug, as they use vLLM for inference, FSDP for training, and Ray to glue it all together. Good luck navigating through that.
+Most production-grade RL libraries are hard to debug, as they use vLLM for inference, FSDP for training, and Ray to handle the distributed communication. Good luck navigating through that.
 
 This repo takes a different approach: a straight-forward implementation based on PyTorch purely for **educational purposes**, no distributed complexity, and code you can easily step through with a debugger.
 
