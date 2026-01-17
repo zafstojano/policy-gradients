@@ -13,7 +13,7 @@
 
 Most production-grade RL libraries are hard to debug, as they use vLLM for inference, FSDP for training, and Ray to glue it all together. Good luck navigating through that.
 
-This repo takes a different approach: a straight-forward implementation based on PyTorch, no distributed complexity, and code you can easily step through with a debugger.
+This repo takes a different approach: a straight-forward implementation based on PyTorch purely for **educational purposes**, no distributed complexity, and code you can easily step through with a debugger.
 
 In many of the cases, it's possible to train a policy model on a **single GPU**. For example, you can train `Qwen/Qwen3-1.7B` with GRPO on a modest 24GB NVIDIA A10G.
 
