@@ -126,7 +126,7 @@ Below is a comparison of the different methods when trained on a task to spell a
 
 
 ## Data
-This project uses [Reasoning Gym](https://github.com/open-thought/reasoning-gym) for generating procedural datasets. In the YAML file, simply specify which datasets you want to use, along with their configurations. For example:
+This project uses [Reasoning Gym](https://github.com/open-thought/reasoning-gym) ([Stojanovski et al. (2025)](https://arxiv.org/abs/2505.24760)) for generating procedural datasets. In the YAML file, simply specify which datasets you want to use, along with their configurations. For example:
 
 ```yaml
 data:
