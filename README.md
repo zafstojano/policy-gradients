@@ -101,9 +101,9 @@ $$ \text{s.t.} \quad\quad p_{i} = \left( \frac{\pi_\theta(a_{i} | s_{i})}{\pi_{\
 
 **Clipped Importance Sampling Policy Optimization (CISPO)** [MiniMax (2025)](https://arxiv.org/abs/2506.13585)
 
-$$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{G}\sum_{i=1}^G \frac{1}{T}\sum_{t=1}^T \text{sg}\left( \hat{p}_{i, t} \right) A_{i, t} \log \pi_\theta (a_{i, t} | s_{i})  \right] $$ 
+$$ J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[  \frac{1}{G}\sum_{i=1}^G \frac{1}{T}\sum_{t=1}^T \text{sg}\left( \hat{p}_{i, t} \right) A_{i, t} \log \pi_\theta (a_{i, t} | s_{i})  \right] $$
 
-$$ \text{s.t.} \quad\quad \hat{p}_{i, t} = \text{clip} \left( p_{i, t}, 1 - \epsilon, 1 + \epsilon  \right) \quad\quad p_{i, t} = \frac{\pi_\theta \left( a_{i, t} | s_{i} \right) }{\pi_{\theta_{\text{old}}} \left( a_{i, t} | s_{i}  \right) } $$ 
+$$ \text{s.t.} \quad\quad \hat{p}_{i, t} = \text{clip} \left( p_{i, t}, 1 - \epsilon, 1 + \epsilon  \right) \quad\quad p_{i, t} = \frac{\pi_\theta \left( a_{i, t} | s_{i} \right) }{\pi_{\theta_{\text{old}}} \left( a_{i, t} | s_{i}  \right) } $$
 
 
 Each method has its own YAML configuration file (parsed by `config.py`):
@@ -118,7 +118,7 @@ configs
 └── rloo.yaml
 ```
 
-Below is a comparison of the different methods when trained on a task to spell a word backwards. 
+Below is a comparison of the different methods when trained on a task to spell a word backwards.
 
 <p align="center">
   <img src="./assets/wandb.png" alt="WandB runs" width="70%">
